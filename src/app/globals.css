@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Design tokens — CSS custom properties
+   All component files reference these vars. No bare hex values
+   in component files.
+   ============================================================ */
+:root {
+  --bg: #0a0e1a;
+  --bg-2: #0d1224;
+  --surface: #11162a;
+  --surface-2: #1a2138;
+  --border: #232b47;
+  --border-strong: #2f3a5e;
+  --text: #e8ecf5;
+  --text-dim: #8b94b0;
+  --text-faint: #5a627d;
+  --accent: #7c5cff;
+  --accent-2: #5eead4;
+  --accent-soft: rgba(124, 92, 255, 0.12);
+  --high: #ff6b6b;
+  --med: #fbbf24;
+  --low: #60a5fa;
+  --success: #34d399;
+
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ============================================================
+   Tailwind 4 theme wiring
+   ============================================================ */
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-dim: var(--text-dim);
+  --color-text-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-high: var(--high);
+  --color-med: var(--med);
+  --color-low: var(--low);
+  --color-success: var(--success);
+}
+
+/* ============================================================
+   Base reset & defaults
+   ============================================================ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-inter), -apple-system, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+/* ============================================================
+   Shared layout utilities
+   ============================================================ */
+@layer components {
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 24px 80px;
+  }
+
+  /* Gradient text (accent → accent-2) */
+  .grad-text {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Priority chips */
+  .chip-high {
+    background: rgba(255, 107, 107, 0.15);
+    color: var(--high);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+  }
+  .chip-med {
+    background: rgba(251, 191, 36, 0.12);
+    color: var(--med);
+    border: 1px solid rgba(251, 191, 36, 0.25);
+  }
+  .chip-low {
+    background: rgba(96, 165, 250, 0.12);
+    color: var(--low);
+    border: 1px solid rgba(96, 165, 250, 0.25);
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--surface) 25%,
+      var(--surface-2) 50%,
+      var(--surface) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 6px;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Fade-in for route transitions */
+  .fade-in {
+    animation: fadeIn var(--duration-normal) var(--ease-out-expo);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+}
