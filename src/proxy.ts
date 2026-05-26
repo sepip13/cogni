@@ -2,10 +2,10 @@ import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export function proxy(
-  req: NextRequest & { auth: { user?: { id: string } } | null }
-) {
-  if (!req.auth?.user) {
+export default async function proxy(req: NextRequest) {
+  const session = await auth();
+
+  if (!session?.user) {
     const callbackUrl = encodeURIComponent(
       req.nextUrl.pathname + req.nextUrl.search
     );
@@ -22,5 +22,3 @@ export const config = {
     "/settings/:path*",
   ],
 };
-
-export default auth(proxy as Parameters<typeof auth>[0]);
