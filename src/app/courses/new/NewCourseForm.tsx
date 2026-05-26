@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".pptx"];
 const MAX_FILES = 10;
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB — must match server
 
 interface SelectedFile {
   file: File;
@@ -27,10 +28,25 @@ export function NewCourseForm() {
 
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
+    const rejected: string[] = [];
+
     const valid = arr.filter((f) => {
       const ext = "." + f.name.split(".").pop()?.toLowerCase();
-      return ALLOWED_EXTENSIONS.includes(ext);
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        rejected.push(`${f.name} (unsupported type)`);
+        return false;
+      }
+      if (f.size > MAX_FILE_BYTES) {
+        rejected.push(`${f.name} (exceeds 20 MB)`);
+        return false;
+      }
+      return true;
     });
+
+    if (rejected.length > 0) {
+      setErrorMsg(`Skipped: ${rejected.join(", ")}`);
+    }
+
     setFiles((prev) => {
       const combined = [
         ...prev,

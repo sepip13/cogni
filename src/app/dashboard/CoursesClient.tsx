@@ -135,11 +135,16 @@ function CourseCard({
   async function handleDelete() {
     setDeleting(true);
     try {
-      await fetch(`/api/courses/${course.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/courses/${course.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        throw new Error(`Delete failed (${res.status})`);
+      }
       onDelete(course.id);
+    } catch {
+      alert("Could not delete the course. Please try again.");
+      setConfirming(false);
     } finally {
       setDeleting(false);
-      setConfirming(false);
     }
   }
 

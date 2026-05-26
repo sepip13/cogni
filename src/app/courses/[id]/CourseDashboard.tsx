@@ -145,6 +145,7 @@ export function CourseDashboard({ courseId }: { courseId: string }) {
       await fetch(`/api/courses/${courseId}/process`, { method: "POST" });
       // Optimistically show PROCESSING while polling resumes
       setCourse((prev) => (prev ? { ...prev, status: "PROCESSING" } : prev));
+      clearPoller();
       intervalRef.current = setInterval(fetchCourse, 2000);
     } catch {
       // Ignore — status stays FAILED, button re-enables

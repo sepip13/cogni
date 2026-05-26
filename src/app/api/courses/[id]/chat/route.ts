@@ -7,6 +7,8 @@ const MODEL = "claude-sonnet-4-5";
 const TEMPERATURE = 0.4;
 // Keep context within a safe window — truncate rawText if needed
 const MAX_RAW_CHARS = 100_000;
+const MAX_HISTORY_TURNS = 20;
+const MAX_MESSAGE_CHARS = 10_000;
 
 // §6.3 exact system prompt
 function buildSystemPrompt(courseName: string): string {
@@ -71,6 +73,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
+  if (!body.message || typeof body.message !== "string") {
+    return new Response(JSON.stringify({ error: "message is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const studiedCount = course.topics.filter((t) => t.studied).length;
   const daysLeft = course.examDate
     ? Math.max(0, Math.ceil((new Date(course.examDate).getTime() - Date.now()) / 86_400_000))
@@ -92,11 +101,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const contextBlock = `<course_material>\n${rawText}\n</course_material>\n\n<student_progress>\n${progressContext}\n</student_progress>`;
 
-  // Build message history
-  const history = (body.history ?? []).map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  // Build message history — limit turns and per-message size to prevent context abuse
+  const history = (body.history ?? [])
+    .slice(-MAX_HISTORY_TURNS)
+    .map((m) => ({
+      role: m.role,
+      content: String(m.content).slice(0, MAX_MESSAGE_CHARS),
+    }));
 
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: contextBlock },

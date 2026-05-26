@@ -88,7 +88,14 @@ export async function POST(req: NextRequest) {
   }
 
   const examDateRaw = formData.get("examDate") as string | null;
-  const examDate = examDateRaw ? new Date(examDateRaw) : null;
+  let examDate: Date | null = null;
+  if (examDateRaw) {
+    const parsed = new Date(examDateRaw);
+    if (isNaN(parsed.getTime())) {
+      return NextResponse.json({ error: "Invalid exam date" }, { status: 400 });
+    }
+    examDate = parsed;
+  }
 
   const pasteText = (formData.get("pasteText") as string | null)?.trim() ?? "";
   const files = formData.getAll("files") as File[];
