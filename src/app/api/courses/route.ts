@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { put } from "@vercel/blob";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
 import { parseFile } from "@/lib/parse-file";
 import { ingestCourse } from "@/lib/ingestion";
 
@@ -15,6 +16,13 @@ const ALLOWED_TYPES = new Set([
   "application/msword",
   "application/vnd.ms-powerpoint",
 ]);
+
+function getUploadDir(): string {
+  return (
+    process.env.UPLOAD_DIR ??
+    path.join(/*turbopackIgnore: true*/ process.cwd(), "uploads")
+  );
+}
 
 export async function GET() {
   const session = await auth();
@@ -123,6 +131,22 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ courseId: course.id }, { status: 202 });
 }
 
+async function saveFileLocally(
+  courseId: string,
+  fileName: string,
+  buffer: Buffer
+): Promise<string> {
+  const uploadDir = getUploadDir();
+  const courseDir = path.join(uploadDir, "courses", courseId);
+  await mkdir(courseDir, { recursive: true });
+
+  // Sanitize file name to prevent path traversal
+  const safeName = path.basename(fileName);
+  await writeFile(path.join(courseDir, safeName), buffer);
+
+  return `/api/files/courses/${courseId}/${encodeURIComponent(safeName)}`;
+}
+
 async function processCourseMaterials(
   courseId: string,
   files: File[],
@@ -149,11 +173,13 @@ async function processCourseMaterials(
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Upload to Vercel Blob
-    const blob = await put(`courses/${courseId}/${file.name}`, buffer, {
-      access: "public",
-      contentType: mimeType,
-    });
+    // Save to local disk
+    let fileUrl = "";
+    try {
+      fileUrl = await saveFileLocally(courseId, file.name, buffer);
+    } catch (err) {
+      console.error(`[course:${courseId}] file save error for ${file.name}:`, err);
+    }
 
     // Parse text server-side
     let parsedText = "";
@@ -169,7 +195,7 @@ async function processCourseMaterials(
     sourceFileDatas.push({
       fileName: file.name,
       fileType: mimeType,
-      blobUrl: blob.url,
+      blobUrl: fileUrl,
       parsedText,
       pageCount,
     });
