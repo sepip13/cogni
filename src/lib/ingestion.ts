@@ -1,27 +1,22 @@
-/**
- * LLM ingestion pipeline.
- * Calls Claude with the §6.1 system prompt, validates the JSON output with Zod,
- * retries once with Opus on validation failure, then writes Topic rows to the DB.
- */
-
-import Anthropic from "@anthropic-ai/sdk";
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
-const MODEL_PRIMARY = "claude-sonnet-4-5";
-const MODEL_FALLBACK = "claude-opus-4-5";
+const MODEL_MAP: Record<string, string> = {
+  haiku: "claude-haiku-4-5-20251001",
+  sonnet: "claude-sonnet-4-5",
+  opus: "claude-opus-4-5",
+};
+const FALLBACK_MODEL = "claude-sonnet-4-5";
 const TEMPERATURE = 0.2;
-const MAX_TOKENS = 8192;
-const TIMEOUT_MS = 90_000;
+const MAX_TOKENS = 16384;
+const TIMEOUT_MS = 300_000;
 
-// ── §6.1 exact system prompt ──────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are Cogni, a personalized exam-prep assistant for university students.
-You will receive concatenated course material from a single course (syllabus,
-slides, grading rubric, past exams). Your job: produce a structured study plan
-that maximizes the student's grade for the upcoming exam.
+You will receive course material from a single course. This could be a syllabus,
+slides, grading rubric, past exams, or any combination. Your job: produce a
+structured study plan that maximizes the student's grade.
 
 Rules:
-1. Cite specific page numbers and quotes from the document for every claim.
+1. Cite specific page numbers and quotes from the document when available.
    Never invent a page number.
 2. If a grading rubric is present, weight topics by their grade impact.
    Knockout criteria (where failure means failing the course) → priority "high"
@@ -30,44 +25,101 @@ Rules:
 4. Practice questions match the exam format described in the document
    (viva, multiple choice, essay, short answer). If no format is stated,
    default to short-answer.
-5. If the document is too short or generic to produce a meaningful plan,
-   set "insufficient_material" to true and explain in "why_insufficient".
-Return ONLY valid JSON matching the schema below. No prose before or after.`;
+5. ALWAYS produce a study plan, even from partial material like a rubric alone.
+   Extract every topic, criterion, and learning objective you can find.
+   Use your knowledge to fill in reasonable subtopics and practice questions.
+6. Set "insufficient_material" to true ONLY if the document is completely
+   empty or contains no educational content whatsoever (e.g. a blank page).
 
-// ── Zod schema (§6.1) ────────────────────────────────────────────────────────
-const TopicSchema = z.object({
-  num: z.string(),
-  title: z.string(),
-  priority: z.enum(["high", "med", "low"]),
-  priority_label: z.string(),
-  why: z.string(),
-  time_minutes: z.number(),
-  pages: z.string().optional(),
-  subtopics: z.array(z.object({ text: z.string(), time_minutes: z.number() })),
-  practice_questions: z.array(
-    z.object({
-      q: z.string(),
-      source: z.string(),
-      expected_answer: z.string(),
-    })
-  ),
-  sources: z.array(z.object({ name: z.string(), page: z.string() })),
-});
+Use the study_plan tool to return your result.`;
 
-const PlanSchema = z.object({
-  course_name: z.string().default("Untitled Course"),
-  course_code: z.string().nullable().default(null),
-  total_prep_time_hours: z.number().default(0),
-  deadline: z.string().nullable().default(null),
-  insufficient_material: z.boolean().default(false),
-  why_insufficient: z.string().nullable().default(null),
-  topics: z.array(TopicSchema).default([]),
-});
+const STUDY_PLAN_TOOL = {
+  name: "study_plan",
+  description: "Submit the structured study plan for this course.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      course_name: { type: "string" as const },
+      course_code: { type: ["string", "null"] as const },
+      total_prep_time_hours: { type: "number" as const },
+      insufficient_material: { type: "boolean" as const },
+      why_insufficient: { type: ["string", "null"] as const },
+      topics: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            num: { type: "string" as const },
+            title: { type: "string" as const },
+            priority: { type: "string" as const, enum: ["high", "med", "low"] },
+            priority_label: { type: "string" as const },
+            why: { type: "string" as const },
+            time_minutes: { type: "number" as const },
+            pages: { type: "string" as const },
+            subtopics: {
+              type: "array" as const,
+              items: {
+                type: "object" as const,
+                properties: {
+                  text: { type: "string" as const },
+                  time_minutes: { type: "number" as const },
+                },
+                required: ["text", "time_minutes"],
+              },
+            },
+            practice_questions: {
+              type: "array" as const,
+              items: {
+                type: "object" as const,
+                properties: {
+                  q: { type: "string" as const },
+                  source: { type: "string" as const },
+                  expected_answer: { type: "string" as const },
+                },
+                required: ["q", "source", "expected_answer"],
+              },
+            },
+            sources: {
+              type: "array" as const,
+              items: {
+                type: "object" as const,
+                properties: {
+                  name: { type: "string" as const },
+                  page: { type: "string" as const },
+                },
+                required: ["name", "page"],
+              },
+            },
+          },
+          required: ["num", "title", "priority", "priority_label", "why", "time_minutes", "subtopics", "practice_questions", "sources"],
+        },
+      },
+    },
+    required: ["course_name", "topics"],
+  },
+};
 
-type Plan = z.infer<typeof PlanSchema>;
+interface Plan {
+  course_name: string;
+  course_code?: string | null;
+  total_prep_time_hours?: number;
+  insufficient_material?: boolean;
+  why_insufficient?: string | null;
+  topics: {
+    num: string;
+    title: string;
+    priority: "high" | "med" | "low";
+    priority_label: string;
+    why: string;
+    time_minutes: number;
+    pages?: string;
+    subtopics: { text: string; time_minutes: number }[];
+    practice_questions: { q: string; source: string; expected_answer: string }[];
+    sources: { name: string; page: string }[];
+  }[];
+}
 
-// ── Main ingestion entry-point ─────────────────────────────────────────────────
-export async function ingestCourse(courseId: string): Promise<void> {
+export async function ingestCourse(courseId: string, modelChoice = "haiku"): Promise<void> {
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     select: { rawText: true, examDate: true },
@@ -78,42 +130,30 @@ export async function ingestCourse(courseId: string): Promise<void> {
     return;
   }
 
+  const primaryModel = MODEL_MAP[modelChoice] ?? MODEL_MAP.haiku;
   const userMessage = buildUserMessage(course.rawText, course.examDate);
 
   let plan: Plan;
   try {
-    const raw = await callClaude(MODEL_PRIMARY, userMessage);
-    plan = PlanSchema.parse(JSON.parse(stripCodeFences(raw)));
+    plan = await callClaude(primaryModel, userMessage);
   } catch (primaryErr) {
-    // Retry once with Opus
+    console.error(`[ingest:${courseId}] Primary model (${modelChoice}) failed:`, primaryErr instanceof Error ? primaryErr.message : String(primaryErr));
     try {
-      const raw = await callClaude(MODEL_FALLBACK, userMessage);
-      plan = PlanSchema.parse(JSON.parse(stripCodeFences(raw)));
+      plan = await callClaude(FALLBACK_MODEL, userMessage);
     } catch (fallbackErr) {
-      const msg =
-        fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
       console.error(`[ingest:${courseId}] Both models failed:`, msg);
       await markFailed(courseId, msg);
       return;
     }
   }
 
-  if (plan.insufficient_material) {
-    await markFailed(
-      courseId,
-      plan.why_insufficient ?? "Insufficient material to generate a study plan."
-    );
-    return;
-  }
-
   await writePlan(courseId, plan);
 }
 
-// ── Write validated plan to DB ─────────────────────────────────────────────────
 async function writePlan(courseId: string, plan: Plan): Promise<void> {
   const priorityMap = { high: "HIGH", med: "MED", low: "LOW" } as const;
 
-  // Delete any stale topics from a previous (failed) attempt
   await prisma.topic.deleteMany({ where: { courseId } });
 
   await prisma.topic.createMany({
@@ -141,44 +181,63 @@ async function writePlan(courseId: string, plan: Plan): Promise<void> {
       status: "READY",
       plan: plan as object,
       totalPrepTimeMinutes: totalMinutes,
-      // Update name/code from LLM if we have something better
+      name: plan.course_name !== "Untitled Course" ? plan.course_name : undefined,
       code: plan.course_code ?? undefined,
     },
   });
 }
 
-// ── Claude call with hard timeout ──────────────────────────────────────────────
-async function callClaude(model: string, userMessage: string): Promise<string> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+async function callClaude(model: string, userMessage: string): Promise<Plan> {
+  const https = await import("node:https");
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const body = JSON.stringify({
+    model,
+    max_tokens: MAX_TOKENS,
+    temperature: TEMPERATURE,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userMessage }],
+    tools: [STUDY_PLAN_TOOL],
+    tool_choice: { type: "tool", name: "study_plan" },
+  });
 
-  try {
-    const response = await client.messages.create(
+  const text = await new Promise<string>((resolve, reject) => {
+    const req = https.request(
       {
-        model,
-        max_tokens: MAX_TOKENS,
-        temperature: TEMPERATURE,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userMessage }],
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY!,
+          "anthropic-version": "2023-06-01",
+        },
+        timeout: TIMEOUT_MS,
       },
-      { signal: controller.signal }
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf-8");
+          if (res.statusCode !== 200) {
+            reject(new Error(`Anthropic API ${res.statusCode}: ${raw}`));
+            return;
+          }
+          resolve(raw);
+        });
+      }
     );
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("Anthropic API timeout")); });
+    req.write(body);
+    req.end();
+  });
 
-    const block = response.content[0];
-    if (block.type !== "text") {
-      throw new Error("Unexpected content block type from Claude");
-    }
-    return block.text;
-  } finally {
-    clearTimeout(timer);
+  const data = JSON.parse(text);
+  const toolBlock = data.content?.find((b: { type: string }) => b.type === "tool_use");
+  if (!toolBlock?.input) {
+    throw new Error("Claude did not return a tool_use block");
   }
-}
-
-function stripCodeFences(text: string): string {
-  const match = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
-  return match ? match[1].trim() : text.trim();
+  return toolBlock.input as Plan;
 }
 
 function buildUserMessage(rawText: string, examDate: Date | null): string {

@@ -1,10 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { parseFile } from "@/lib/parse-file";
 import { ingestCourse } from "@/lib/ingestion";
+
+export const maxDuration = 300;
 
 const MAX_FILES = 10;
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
@@ -15,6 +17,7 @@ const ALLOWED_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/msword",
   "application/vnd.ms-powerpoint",
+  "text/plain",
 ]);
 
 function getUploadDir(): string {
@@ -82,10 +85,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
   }
 
-  const name = (formData.get("name") as string | null)?.trim();
-  if (!name) {
-    return NextResponse.json({ error: "Course name is required" }, { status: 400 });
-  }
+  const name = (formData.get("name") as string | null)?.trim() || "Untitled Course";
 
   const examDateRaw = formData.get("examDate") as string | null;
   let examDate: Date | null = null;
@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
     examDate = parsed;
   }
 
+  const modelChoice = (formData.get("model") as string | null) ?? "haiku";
   const pasteText = (formData.get("pasteText") as string | null)?.trim() ?? "";
   const files = formData.getAll("files") as File[];
 
@@ -124,15 +125,19 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Process files + pasted text in background (non-blocking response)
-  processCourseMaterials(course.id, files, pasteText).catch((err) => {
-    console.error(`[course:${course.id}] background processing error:`, err);
-    prisma.course
-      .update({
-        where: { id: course.id },
-        data: { status: "FAILED" },
-      })
-      .catch(() => {});
+  // Process files + pasted text after response is sent (Next.js keeps the work alive)
+  after(async () => {
+    try {
+      await processCourseMaterials(course.id, files, pasteText, modelChoice);
+    } catch (err) {
+      console.error(`[course:${course.id}] background processing error:`, err);
+      await prisma.course
+        .update({
+          where: { id: course.id },
+          data: { status: "FAILED" },
+        })
+        .catch(() => {});
+    }
   });
 
   return NextResponse.json({ courseId: course.id }, { status: 202 });
@@ -157,7 +162,8 @@ async function saveFileLocally(
 async function processCourseMaterials(
   courseId: string,
   files: File[],
-  pasteText: string
+  pasteText: string,
+  modelChoice: string
 ) {
   const sourceFileDatas: {
     fileName: string;
@@ -227,10 +233,10 @@ async function processCourseMaterials(
   });
 
   // Kick off LLM ingestion now that raw text is ready
-  await ingestCourse(courseId);
+  await ingestCourse(courseId, modelChoice);
 }
 
 function isAllowedByExtension(fileName: string): boolean {
   const ext = fileName.split(".").pop()?.toLowerCase();
-  return ["pdf", "docx", "pptx"].includes(ext ?? "");
+  return ["pdf", "doc", "docx", "ppt", "pptx", "txt"].includes(ext ?? "");
 }

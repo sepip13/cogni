@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ingestCourse } from "@/lib/ingestion";
+
+export const maxDuration = 300;
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -34,9 +36,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     data: { status: "PROCESSING" },
   });
 
-  // Run ingestion asynchronously (respond immediately, client polls)
-  ingestCourse(id).catch((err) => {
-    console.error(`[process:${id}] unhandled error:`, err);
+  // Run ingestion after response is sent (Next.js keeps the work alive)
+  after(async () => {
+    try {
+      await ingestCourse(id);
+    } catch (err) {
+      console.error(`[process:${id}] unhandled error:`, err);
+    }
   });
 
   return NextResponse.json({ status: "PROCESSING" }, { status: 202 });

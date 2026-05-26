@@ -3,7 +3,15 @@
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".pptx"];
+const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt"];
+const ALLOWED_MIMES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+]);
 const MAX_FILES = 10;
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB — must match server
 
@@ -14,6 +22,14 @@ interface SelectedFile {
 
 type SubmitState = "idle" | "uploading" | "error";
 
+const MODELS = [
+  { id: "haiku", label: "Haiku", desc: "Fast (~10s)" },
+  { id: "sonnet", label: "Sonnet", desc: "Balanced (~30s)" },
+  { id: "opus", label: "Opus", desc: "Best quality (~2min)" },
+] as const;
+
+type ModelChoice = (typeof MODELS)[number]["id"];
+
 export function NewCourseForm() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -21,6 +37,7 @@ export function NewCourseForm() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [courseName, setCourseName] = useState("");
   const [examDate, setExamDate] = useState("");
+  const [model, setModel] = useState<ModelChoice>("haiku");
   const [pasteText, setPasteText] = useState("");
   const [showPaste, setShowPaste] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -31,8 +48,10 @@ export function NewCourseForm() {
     const rejected: string[] = [];
 
     const valid = arr.filter((f) => {
-      const ext = "." + f.name.split(".").pop()?.toLowerCase();
-      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      const ext = "." + (f.name.split(".").pop()?.toLowerCase() ?? "");
+      const extOk = ALLOWED_EXTENSIONS.includes(ext);
+      const mimeOk = ALLOWED_MIMES.has(f.type);
+      if (!extOk && !mimeOk) {
         rejected.push(`${f.name} (unsupported type)`);
         return false;
       }
@@ -69,11 +88,7 @@ export function NewCourseForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    const name = courseName.trim();
-    if (!name) {
-      setErrorMsg("Please enter a course name.");
-      return;
-    }
+    const name = courseName.trim() || "Untitled Course";
     if (files.length === 0 && !pasteText.trim()) {
       setErrorMsg("Add at least one file or paste your course material.");
       return;
@@ -84,6 +99,7 @@ export function NewCourseForm() {
 
     const formData = new FormData();
     formData.append("name", name);
+    formData.append("model", model);
     if (examDate) formData.append("examDate", examDate);
     if (pasteText.trim()) formData.append("pasteText", pasteText.trim());
     for (const { file } of files) formData.append("files", file);
@@ -129,7 +145,10 @@ export function NewCourseForm() {
             marginBottom: 8,
           }}
         >
-          Course name <span style={{ color: "var(--high)" }}>*</span>
+          Course name{" "}
+            <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>
+              (optional — auto-detected from material)
+            </span>
         </label>
         <input
           id="courseName"
@@ -137,7 +156,6 @@ export function NewCourseForm() {
           placeholder="e.g. Marketing Research Methods"
           value={courseName}
           onChange={(e) => setCourseName(e.target.value)}
-          required
           disabled={uploading}
           style={{
             width: "100%",
@@ -188,6 +206,61 @@ export function NewCourseForm() {
             colorScheme: "dark",
           }}
         />
+      </div>
+
+      {/* Model selector */}
+      <div style={{ marginBottom: 24 }}>
+        <label
+          style={{
+            display: "block",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text-dim)",
+            marginBottom: 8,
+          }}
+        >
+          AI Model
+        </label>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 8,
+          }}
+        >
+          {MODELS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setModel(m.id)}
+              disabled={uploading}
+              style={{
+                padding: "10px 8px",
+                borderRadius: 10,
+                border: model === m.id
+                  ? "2px solid var(--accent)"
+                  : "1px solid var(--border-strong)",
+                background: model === m.id ? "var(--surface-2)" : "var(--surface)",
+                cursor: uploading ? "default" : "pointer",
+                transition: "all 0.15s",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: model === m.id ? "var(--accent)" : "var(--text)",
+                }}
+              >
+                {m.label}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>
+                {m.desc}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Dropzone */}
@@ -247,13 +320,13 @@ export function NewCourseForm() {
             letterSpacing: "0.08em",
           }}
         >
-          PDF · DOCX · PPTX
+          PDF · DOC · DOCX · PPT · PPTX · TXT
         </div>
         <input
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".pdf,.docx,.pptx"
+          accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
           onChange={(e) => e.target.files && addFiles(e.target.files)}
           onClick={(e) => e.stopPropagation()}
           style={{ display: "none" }}
