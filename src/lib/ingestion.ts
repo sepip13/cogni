@@ -55,13 +55,13 @@ const TopicSchema = z.object({
 });
 
 const PlanSchema = z.object({
-  course_name: z.string(),
-  course_code: z.string().nullable(),
-  total_prep_time_hours: z.number(),
-  deadline: z.string().nullable(),
-  insufficient_material: z.boolean(),
-  why_insufficient: z.string().nullable(),
-  topics: z.array(TopicSchema),
+  course_name: z.string().default("Untitled Course"),
+  course_code: z.string().nullable().default(null),
+  total_prep_time_hours: z.number().default(0),
+  deadline: z.string().nullable().default(null),
+  insufficient_material: z.boolean().default(false),
+  why_insufficient: z.string().nullable().default(null),
+  topics: z.array(TopicSchema).default([]),
 });
 
 type Plan = z.infer<typeof PlanSchema>;
@@ -83,12 +83,12 @@ export async function ingestCourse(courseId: string): Promise<void> {
   let plan: Plan;
   try {
     const raw = await callClaude(MODEL_PRIMARY, userMessage);
-    plan = PlanSchema.parse(JSON.parse(raw));
+    plan = PlanSchema.parse(JSON.parse(stripCodeFences(raw)));
   } catch (primaryErr) {
     // Retry once with Opus
     try {
       const raw = await callClaude(MODEL_FALLBACK, userMessage);
-      plan = PlanSchema.parse(JSON.parse(raw));
+      plan = PlanSchema.parse(JSON.parse(stripCodeFences(raw)));
     } catch (fallbackErr) {
       const msg =
         fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
@@ -96,6 +96,14 @@ export async function ingestCourse(courseId: string): Promise<void> {
       await markFailed(courseId, msg);
       return;
     }
+  }
+
+  if (plan.insufficient_material) {
+    await markFailed(
+      courseId,
+      plan.why_insufficient ?? "Insufficient material to generate a study plan."
+    );
+    return;
   }
 
   await writePlan(courseId, plan);
@@ -166,6 +174,11 @@ async function callClaude(model: string, userMessage: string): Promise<string> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function stripCodeFences(text: string): string {
+  const match = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+  return match ? match[1].trim() : text.trim();
 }
 
 function buildUserMessage(rawText: string, examDate: Date | null): string {

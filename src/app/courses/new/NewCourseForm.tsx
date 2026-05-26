@@ -255,6 +255,7 @@ export function NewCourseForm() {
           multiple
           accept=".pdf,.docx,.pptx"
           onChange={(e) => e.target.files && addFiles(e.target.files)}
+          onClick={(e) => e.stopPropagation()}
           style={{ display: "none" }}
           aria-hidden="true"
           tabIndex={-1}

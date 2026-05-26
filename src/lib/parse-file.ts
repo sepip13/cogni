@@ -7,6 +7,7 @@
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
 import JSZip from "jszip";
+import Anthropic from "@anthropic-ai/sdk";
 
 export interface ParseResult {
   text: string;
@@ -46,10 +47,48 @@ export async function parseFile(
 async function parsePdf(buffer: Buffer): Promise<ParseResult> {
   const parser = new PDFParse({ data: buffer });
   const result = await parser.getText();
-  return {
-    text: result.text,
-    pageCount: result.total,
-  };
+
+  const stripped = result.text.replace(/--\s*\d+\s*of\s*\d+\s*--/g, "").trim();
+  if (stripped.length > 50) {
+    return { text: result.text, pageCount: result.total };
+  }
+
+  // Scanned/image-based PDF — use Claude vision as fallback
+  return parsePdfWithVision(buffer, result.total);
+}
+
+async function parsePdfWithVision(
+  buffer: Buffer,
+  pageCount: number | null
+): Promise<ParseResult> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-5",
+    max_tokens: 8192,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: buffer.toString("base64"),
+            },
+          },
+          {
+            type: "text",
+            text: "Extract all text content from this PDF. Return only the extracted text, preserving structure like headings, bullet points, and tables. No commentary.",
+          },
+        ],
+      },
+    ],
+  });
+
+  const block = response.content[0];
+  const text = block.type === "text" ? block.text : "";
+  return { text, pageCount };
 }
 
 async function parseDocx(buffer: Buffer): Promise<ParseResult> {
