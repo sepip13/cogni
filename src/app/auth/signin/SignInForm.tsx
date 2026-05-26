@@ -4,90 +4,133 @@ import { signIn } from "next-auth/react";
 import { useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 
+type Mode = "signin" | "signup";
+
+const inputStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border-strong)",
+  borderRadius: 8,
+  fontSize: 14,
+  color: "var(--text)",
+  outline: "none",
+  width: "100%",
+  fontFamily: "inherit",
+  transition: "border-color var(--duration-fast)",
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 500,
+  color: "var(--text-dim)",
+  display: "block",
+  marginBottom: 6,
+};
+
 export function SignInForm() {
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/dashboard";
-  const error = searchParams.get("error");
+  const callbackUrl  = searchParams.get("callbackUrl") ?? "/dashboard";
+  const urlError     = searchParams.get("error");
 
-  const [email, setEmail] = useState("");
-  const [emailSent, setEmailSent] = useState(false);
+  const [mode, setMode]           = useState<Mode>("signin");
+  const [email, setEmail]         = useState("");
+  const [password, setPassword]   = useState("");
+  const [name, setName]           = useState("");
+  const [error, setError]         = useState("");
   const [isPending, startTransition] = useTransition();
-  const [emailError, setEmailError] = useState("");
 
-  function handleEmailSignIn(e: React.FormEvent) {
+  function switchMode(next: Mode) {
+    setMode(next);
+    setError("");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setEmailError("Enter a valid email address.");
+    setError("");
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Enter a valid email address.");
       return;
     }
-    setEmailError("");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
 
     startTransition(async () => {
-      const res = await signIn("resend", {
-        email: trimmed,
+      if (mode === "signup") {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: trimmedEmail, password, name: name.trim() || undefined }),
+        });
+
+        if (res.status === 409) {
+          setError("Email already registered. Sign in instead.");
+          return;
+        }
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setError(body.error ?? "Sign up failed. Please try again.");
+          return;
+        }
+        // Account created — now sign in automatically
+      }
+
+      const result = await signIn("credentials", {
+        email: trimmedEmail,
+        password,
         callbackUrl,
         redirect: false,
       });
 
-      if (res?.error) {
-        setEmailError("Could not send the link. Please try again.");
+      if (result?.error) {
+        setError(mode === "signup" ? "Account created but sign-in failed. Try signing in." : "Wrong email or password.");
       } else {
-        setEmailSent(true);
+        window.location.href = callbackUrl;
       }
     });
   }
 
-  if (emailSent) {
-    return (
-      <div style={{ textAlign: "center", padding: "8px 0" }}>
-        <div
-          style={{
-            width: 48,
-            height: 48,
-            background: "rgba(52, 211, 153, 0.12)",
-            border: "1px solid rgba(52, 211, 153, 0.3)",
-            borderRadius: "50%",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginBottom: 16,
-            fontSize: 22,
-          }}
-          aria-hidden="true"
-        >
-          ✉️
-        </div>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
-          Check your inbox
-        </h2>
-        <p style={{ color: "var(--text-dim)", fontSize: 14, lineHeight: 1.5 }}>
-          We sent a sign-in link to <strong>{email}</strong>. Click it to
-          continue.
-        </p>
-        <button
-          type="button"
-          onClick={() => setEmailSent(false)}
-          style={{
-            marginTop: 20,
-            fontSize: 13,
-            color: "var(--text-dim)",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            textDecoration: "underline",
-          }}
-        >
-          Use a different email
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Auth error banner */}
-      {error && (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* Mode toggle */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          background: "var(--surface-2)",
+          borderRadius: 10,
+          padding: 4,
+          gap: 4,
+        }}
+      >
+        {(["signin", "signup"] as Mode[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => switchMode(m)}
+            style={{
+              padding: "8px 0",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all var(--duration-fast)",
+              background: mode === m ? "var(--surface)" : "transparent",
+              color: mode === m ? "var(--text)" : "var(--text-dim)",
+              border: mode === m ? "1px solid var(--border-strong)" : "1px solid transparent",
+            }}
+          >
+            {m === "signin" ? "Sign in" : "Create account"}
+          </button>
+        ))}
+      </div>
+
+      {/* Error banner */}
+      {(error || urlError) && (
         <div
           role="alert"
           style={{
@@ -99,75 +142,87 @@ export function SignInForm() {
             color: "var(--high)",
           }}
         >
-          Something went wrong. Please try again.
+          {error || "Something went wrong. Please try again."}
         </div>
       )}
 
-      {/* Email magic link */}
-      <form onSubmit={handleEmailSignIn} noValidate>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label
-            htmlFor="email"
-            style={{ fontSize: 13, fontWeight: 500, color: "var(--text-dim)" }}
-          >
-            Email address
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@university.edu"
-            value={email}
-            onChange={(e) => { setEmail(e.target.value); setEmailError(""); }}
-            required
+      <form onSubmit={handleSubmit} noValidate>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+          {/* Name — signup only */}
+          {mode === "signup" && (
+            <div>
+              <label htmlFor="name" style={labelStyle}>Name <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>(optional)</span></label>
+              <input
+                id="name"
+                type="text"
+                autoComplete="name"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isPending}
+                style={inputStyle}
+              />
+            </div>
+          )}
+
+          {/* Email */}
+          <div>
+            <label htmlFor="email" style={labelStyle}>Email address</label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(""); }}
+              required
+              disabled={isPending}
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Password */}
+          <div>
+            <label htmlFor="password" style={labelStyle}>Password</label>
+            <input
+              id="password"
+              type="password"
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              placeholder={mode === "signup" ? "Min. 8 characters" : "Your password"}
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              required
+              disabled={isPending}
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Submit */}
+          <button
+            type="submit"
             disabled={isPending}
             style={{
-              padding: "10px 14px",
-              background: "var(--surface-2)",
-              border: `1px solid ${emailError ? "var(--high)" : "var(--border-strong)"}`,
-              borderRadius: 8,
-              fontSize: 14,
-              color: "var(--text)",
-              outline: "none",
+              marginTop: 4,
               width: "100%",
-              fontFamily: "inherit",
-              transition: "border-color var(--duration-fast)",
+              padding: "12px 20px",
+              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+              color: "var(--bg)",
+              border: "none",
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: isPending ? "default" : "pointer",
+              opacity: isPending ? 0.7 : 1,
+              transition: "opacity var(--duration-fast)",
             }}
-            aria-invalid={!!emailError}
-            aria-describedby={emailError ? "email-error" : undefined}
-          />
-          {emailError && (
-            <span
-              id="email-error"
-              role="alert"
-              style={{ fontSize: 12, color: "var(--high)" }}
-            >
-              {emailError}
-            </span>
-          )}
+            aria-busy={isPending}
+          >
+            {isPending
+              ? (mode === "signup" ? "Creating account…" : "Signing in…")
+              : (mode === "signup" ? "Create account" : "Sign in")}
+          </button>
         </div>
-
-        <button
-          type="submit"
-          disabled={isPending}
-          style={{
-            marginTop: 10,
-            width: "100%",
-            padding: "12px 20px",
-            background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-            color: "var(--bg)",
-            border: "none",
-            borderRadius: 10,
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: "pointer",
-            transition: "opacity var(--duration-fast)",
-            opacity: isPending ? 0.7 : 1,
-          }}
-          aria-busy={isPending}
-        >
-          {isPending ? "Sending…" : "Email me a sign-in link"}
-        </button>
       </form>
     </div>
   );
