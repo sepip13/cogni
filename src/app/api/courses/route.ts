@@ -115,6 +115,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Read file buffers NOW, before the response is sent.
+  // File objects from formData are backed by the request stream — they become
+  // unreadable once after() fires and the request is cleaned up.
+  const fileBuffers: { name: string; type: string; buffer: Buffer }[] = [];
+  for (const file of files) {
+    fileBuffers.push({
+      name: file.name,
+      type: file.type || "application/octet-stream",
+      buffer: Buffer.from(await file.arrayBuffer()),
+    });
+  }
+
   // Create the Course row immediately so client can redirect
   const course = await prisma.course.create({
     data: {
@@ -128,7 +140,7 @@ export async function POST(req: NextRequest) {
   // Process files + pasted text after response is sent (Next.js keeps the work alive)
   after(async () => {
     try {
-      await processCourseMaterials(course.id, files, pasteText, modelChoice);
+      await processCourseMaterials(course.id, fileBuffers, pasteText, modelChoice);
     } catch (err) {
       console.error(`[course:${course.id}] background processing error:`, err);
       await prisma.course
@@ -161,7 +173,7 @@ async function saveFileLocally(
 
 async function processCourseMaterials(
   courseId: string,
-  files: File[],
+  files: { name: string; type: string; buffer: Buffer }[],
   pasteText: string,
   modelChoice: string
 ) {
@@ -174,31 +186,25 @@ async function processCourseMaterials(
   }[] = [];
 
   for (const file of files) {
-    // Validate file type
-    const mimeType = file.type || "application/octet-stream";
-    if (!ALLOWED_TYPES.has(mimeType) && !isAllowedByExtension(file.name)) {
-      continue; // skip unknown types silently (already validated client-side)
+    if (!ALLOWED_TYPES.has(file.type) && !isAllowedByExtension(file.name)) {
+      continue;
     }
 
-    if (file.size > MAX_FILE_BYTES) {
-      continue; // skip oversized files
+    if (file.buffer.length > MAX_FILE_BYTES) {
+      continue;
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    // Save to local disk
     let fileUrl = "";
     try {
-      fileUrl = await saveFileLocally(courseId, file.name, buffer);
+      fileUrl = await saveFileLocally(courseId, file.name, file.buffer);
     } catch (err) {
       console.error(`[course:${courseId}] file save error for ${file.name}:`, err);
     }
 
-    // Parse text server-side
     let parsedText = "";
     let pageCount: number | null = null;
     try {
-      const result = await parseFile(buffer, mimeType);
+      const result = await parseFile(file.buffer, file.type);
       parsedText = result.text;
       pageCount = result.pageCount;
     } catch (err) {
@@ -207,7 +213,7 @@ async function processCourseMaterials(
 
     sourceFileDatas.push({
       fileName: file.name,
-      fileType: mimeType,
+      fileType: file.type,
       blobUrl: fileUrl,
       parsedText,
       pageCount,

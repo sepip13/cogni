@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
+// Capture API key at module load time so it is always available,
+// even inside next/server `after()` callbacks where process.env
+// may not be populated the same way as during request handling.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
+
 const MODEL_MAP: Record<string, string> = {
   haiku: "claude-haiku-4-5-20251001",
   sonnet: "claude-sonnet-4-5",
@@ -120,6 +125,11 @@ interface Plan {
 }
 
 export async function ingestCourse(courseId: string, modelChoice = "haiku"): Promise<void> {
+  if (!ANTHROPIC_API_KEY) {
+    await markFailed(courseId, "ANTHROPIC_API_KEY is not set — check server environment variables.");
+    return;
+  }
+
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     select: { rawText: true, examDate: true },
@@ -208,7 +218,7 @@ async function callClaude(model: string, userMessage: string): Promise<Plan> {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-api-key": process.env.ANTHROPIC_API_KEY!,
+          "x-api-key": ANTHROPIC_API_KEY,
           "anthropic-version": "2023-06-01",
         },
         timeout: TIMEOUT_MS,
