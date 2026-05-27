@@ -7,7 +7,7 @@ import { AdminPanel } from "./AdminPanel";
 export const metadata: Metadata = { title: "Admin — Cogni" };
 
 // Comma-separated list of admin emails in env, e.g. "a@b.com,c@d.com"
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "pouglife@gmail.com,sepipsy@gmail.com,sepspipsy@gmail.com")
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "sepipsy@gmail.com,sepspipsy@gmail.com")
   .split(",")
   .map((e) => e.trim().toLowerCase());
 

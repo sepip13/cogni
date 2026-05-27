@@ -8,7 +8,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 
 const ADMIN_EMAILS = (
-  process.env.ADMIN_EMAILS ?? "pouglife@gmail.com,sepipsy@gmail.com,sepspipsy@gmail.com"
+  process.env.ADMIN_EMAILS ?? "sepipsy@gmail.com,sepspipsy@gmail.com"
 )
   .split(",")
   .map((e) => e.trim().toLowerCase());
