@@ -25,12 +25,27 @@ type SubmitState = "idle" | "uploading" | "error";
 // ── Model definitions ──────────────────────────────────────────────────────
 
 const FREE_MODELS = [
-  { id: "auto",                                       label: "Auto",       desc: "Best available",  provider: "Router"    },
-  { id: "gemini-2.5-flash",                           label: "Gemini 2.5", desc: "1M ctx · quality", provider: "Google"    },
-  { id: "gemini-3.5-flash",                           label: "Gemini 3.5", desc: "Latest",          provider: "Google"    },
-  { id: "llama-3.3-70b-versatile",                    label: "Llama 3.3",  desc: "Fast · 131K ctx", provider: "Groq"      },
-  { id: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Llama 4",    desc: "Scout",           provider: "Groq"      },
-  { id: "qwen/qwen3-32b",                             label: "Qwen3 32B",  desc: "Reasoning",       provider: "Groq"      },
+  // Router
+  { id: "auto",                                                label: "Auto",          desc: "Best available",   provider: "Router"     },
+  // Google
+  { id: "gemini-2.5-flash",                                   label: "Gemini 2.5",    desc: "1M ctx · quality", provider: "Google"     },
+  { id: "gemini-3.5-flash",                                   label: "Gemini 3.5",    desc: "Latest",           provider: "Google"     },
+  { id: "gemini-2.5-flash-lite",                              label: "Gemini Lite",   desc: "Fast & light",     provider: "Google"     },
+  { id: "gemini-3-flash-preview",                             label: "Gemini 3",      desc: "New gen preview",  provider: "Google"     },
+  // Groq
+  { id: "llama-3.3-70b-versatile",                            label: "Llama 3.3",     desc: "Fast · 131K ctx",  provider: "Groq"       },
+  { id: "meta-llama/llama-4-scout-17b-16e-instruct",         label: "Llama 4 Scout", desc: "131K ctx",         provider: "Groq"       },
+  { id: "llama-3.1-8b-instant",                              label: "Llama 3.1 8B",  desc: "Ultra fast",       provider: "Groq"       },
+  { id: "openai/gpt-oss-120b",                               label: "GPT-OSS 120B",  desc: "Large · 131K",     provider: "Groq"       },
+  { id: "openai/gpt-oss-20b",                                label: "GPT-OSS 20B",   desc: "Fast & smart",     provider: "Groq"       },
+  { id: "groq/compound",                                     label: "Compound",      desc: "Agentic",          provider: "Groq"       },
+  { id: "qwen/qwen3-32b",                                    label: "Qwen3 32B",     desc: "Reasoning",        provider: "Groq"       },
+  // SambaNova
+  { id: "DeepSeek-V3.1",                                     label: "DeepSeek V3",   desc: "131K ctx",         provider: "SambaNova"  },
+  // OpenRouter free tier
+  { id: "nvidia/nemotron-3-super-120b-a12b:free",            label: "Nemotron 120B", desc: "1M ctx · free",    provider: "OpenRouter" },
+  { id: "google/gemma-4-31b-it:free",                        label: "Gemma 4 31B",   desc: "262K ctx · free",  provider: "OpenRouter" },
+  { id: "nousresearch/hermes-3-llama-3.1-405b:free",         label: "Hermes 405B",   desc: "Huge · free",      provider: "OpenRouter" },
 ] as const;
 
 const PRO_MODELS = [
