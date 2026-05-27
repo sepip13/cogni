@@ -48,3 +48,8 @@ next-env.d.ts
 
 # local file uploads (VPS storage)
 /uploads
+
+# Local tooling artifacts
+.playwright-mcp/
+.claude/
+.env.bak

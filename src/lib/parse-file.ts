@@ -19,6 +19,7 @@ export async function parseFile(
   mimeType: string
 ): Promise<ParseResult> {
   const lowerType = mimeType.toLowerCase();
+  console.log(`[parse-file] ▶ parseFile — mimeType="${mimeType}" bufferSize=${buffer.length}`);
 
   if (lowerType.includes("pdf")) {
     return parsePdf(buffer);
@@ -45,8 +46,10 @@ export async function parseFile(
 }
 
 async function parsePdf(buffer: Buffer): Promise<ParseResult> {
+  console.log(`[parse-file] ▶ parsePdf — size=${buffer.length}`);
   const parser = new PDFParse({ data: buffer });
   const result = await parser.getText();
+  console.log(`[parse-file] ✓ pdf-parse done — pages=${result.total} textLen=${result.text.length}`);
 
   const stripped = result.text.replace(/--\s*\d+\s*of\s*\d+\s*--/g, "").trim();
   if (stripped.length > 50) {
@@ -54,6 +57,7 @@ async function parsePdf(buffer: Buffer): Promise<ParseResult> {
   }
 
   // Scanned/image-based PDF — use Claude vision as fallback
+  console.log(`[parse-file] ⚠ PDF text too short (${stripped.length} chars) — falling back to Claude vision`);
   return parsePdfWithVision(buffer, result.total);
 }
 

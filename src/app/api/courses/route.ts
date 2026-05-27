@@ -177,6 +177,8 @@ async function processCourseMaterials(
   pasteText: string,
   modelChoice: string
 ) {
+  console.log(`[course:${courseId}] ▶ processCourseMaterials START — files=${files.length} pasteText=${pasteText.length}chars model=${modelChoice}`);
+
   const sourceFileDatas: {
     fileName: string;
     fileType: string;
@@ -186,29 +188,36 @@ async function processCourseMaterials(
   }[] = [];
 
   for (const file of files) {
+    console.log(`[course:${courseId}]   file: name="${file.name}" type="${file.type}" size=${file.buffer.length}bytes`);
+
     if (!ALLOWED_TYPES.has(file.type) && !isAllowedByExtension(file.name)) {
+      console.warn(`[course:${courseId}]   ⚠ SKIPPED — type not allowed: "${file.type}"`);
       continue;
     }
 
     if (file.buffer.length > MAX_FILE_BYTES) {
+      console.warn(`[course:${courseId}]   ⚠ SKIPPED — file too large: ${file.buffer.length} > ${MAX_FILE_BYTES}`);
       continue;
     }
 
     let fileUrl = "";
     try {
       fileUrl = await saveFileLocally(courseId, file.name, file.buffer);
+      console.log(`[course:${courseId}]   ✓ saved → ${fileUrl}`);
     } catch (err) {
-      console.error(`[course:${courseId}] file save error for ${file.name}:`, err);
+      console.error(`[course:${courseId}]   ✗ file save error for "${file.name}":`, err instanceof Error ? err.message : err);
     }
 
     let parsedText = "";
     let pageCount: number | null = null;
     try {
+      console.log(`[course:${courseId}]   ▶ parsing "${file.name}"...`);
       const result = await parseFile(file.buffer, file.type);
       parsedText = result.text;
       pageCount = result.pageCount;
+      console.log(`[course:${courseId}]   ✓ parsed "${file.name}" — ${parsedText.length} chars, pages=${pageCount}`);
     } catch (err) {
-      console.error(`[course:${courseId}] parse error for ${file.name}:`, err);
+      console.error(`[course:${courseId}]   ✗ parse error for "${file.name}":`, err instanceof Error ? err.message : err);
     }
 
     sourceFileDatas.push({
@@ -220,7 +229,7 @@ async function processCourseMaterials(
     });
   }
 
-  // Write all SourceFile rows
+  console.log(`[course:${courseId}] ▶ Writing ${sourceFileDatas.length} SourceFile rows to DB...`);
   await prisma.sourceFile.createMany({
     data: sourceFileDatas.map((d) => ({ courseId, ...d })),
   });
@@ -233,13 +242,17 @@ async function processCourseMaterials(
     .filter(Boolean)
     .join("\n\n---\n\n");
 
+  console.log(`[course:${courseId}] ✓ rawText combined — total ${allText.length} chars`);
+
   await prisma.course.update({
     where: { id: courseId },
     data: { rawText: allText },
   });
 
   // Kick off LLM ingestion now that raw text is ready
+  console.log(`[course:${courseId}] ▶ Handing off to ingestCourse...`);
   await ingestCourse(courseId, modelChoice);
+  console.log(`[course:${courseId}] ✓ processCourseMaterials DONE`);
 }
 
 function isAllowedByExtension(fileName: string): boolean {

@@ -125,40 +125,69 @@ interface Plan {
 }
 
 export async function ingestCourse(courseId: string, modelChoice = "haiku"): Promise<void> {
+  console.log(`[ingest:${courseId}] ▶ START — model=${modelChoice} ts=${new Date().toISOString()}`);
+
   if (!ANTHROPIC_API_KEY) {
-    await markFailed(courseId, "ANTHROPIC_API_KEY is not set — check server environment variables.");
+    const reason = "ANTHROPIC_API_KEY is not set — check server environment variables.";
+    console.error(`[ingest:${courseId}] ✗ ${reason}`);
+    await markFailed(courseId, reason);
     return;
   }
+  console.log(`[ingest:${courseId}] ✓ API key present (length=${ANTHROPIC_API_KEY.length})`);
 
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    select: { rawText: true, examDate: true },
-  });
+  let course: { rawText: string | null; examDate: Date | null } | null;
+  try {
+    course = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: { rawText: true, examDate: true },
+    });
+  } catch (dbErr) {
+    const reason = `DB lookup failed: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`;
+    console.error(`[ingest:${courseId}] ✗ ${reason}`);
+    await markFailed(courseId, reason);
+    return;
+  }
 
   if (!course?.rawText) {
-    await markFailed(courseId, "No rawText available for ingestion.");
+    const reason = `No rawText available (course=${course ? "found" : "missing"}).`;
+    console.error(`[ingest:${courseId}] ✗ ${reason}`);
+    await markFailed(courseId, reason);
     return;
   }
+  console.log(`[ingest:${courseId}] ✓ rawText length=${course.rawText.length} chars`);
 
   const primaryModel = MODEL_MAP[modelChoice] ?? MODEL_MAP.haiku;
+  console.log(`[ingest:${courseId}] ▶ Calling Claude — model=${primaryModel}`);
+
   const userMessage = buildUserMessage(course.rawText, course.examDate);
 
   let plan: Plan;
   try {
     plan = await callClaude(primaryModel, userMessage);
+    console.log(`[ingest:${courseId}] ✓ Claude responded — topics=${plan.topics.length}`);
   } catch (primaryErr) {
-    console.error(`[ingest:${courseId}] Primary model (${modelChoice}) failed:`, primaryErr instanceof Error ? primaryErr.message : String(primaryErr));
+    const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+    console.error(`[ingest:${courseId}] ✗ Primary model (${primaryModel}) failed: ${primaryMsg}`);
+    console.log(`[ingest:${courseId}] ▶ Retrying with fallback model=${FALLBACK_MODEL}`);
     try {
       plan = await callClaude(FALLBACK_MODEL, userMessage);
+      console.log(`[ingest:${courseId}] ✓ Fallback Claude responded — topics=${plan.topics.length}`);
     } catch (fallbackErr) {
       const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-      console.error(`[ingest:${courseId}] Both models failed:`, msg);
-      await markFailed(courseId, msg);
+      console.error(`[ingest:${courseId}] ✗ Both models failed. Last error: ${msg}`);
+      await markFailed(courseId, `Primary (${primaryModel}): ${primaryMsg} | Fallback (${FALLBACK_MODEL}): ${msg}`);
       return;
     }
   }
 
-  await writePlan(courseId, plan);
+  try {
+    await writePlan(courseId, plan);
+    console.log(`[ingest:${courseId}] ✓ DONE — course marked READY`);
+  } catch (writeErr) {
+    const reason = `writePlan failed: ${writeErr instanceof Error ? writeErr.message : String(writeErr)}`;
+    console.error(`[ingest:${courseId}] ✗ ${reason}`);
+    await markFailed(courseId, reason);
+  }
 }
 
 async function writePlan(courseId: string, plan: Plan): Promise<void> {
@@ -261,6 +290,10 @@ async function markFailed(courseId: string, reason: string): Promise<void> {
   console.error(`[ingest:${courseId}] FAILED: ${reason}`);
   await prisma.course.update({
     where: { id: courseId },
-    data: { status: "FAILED" },
+    data: {
+      status: "FAILED",
+      // Store the reason in the plan field so it's retrievable for debugging
+      plan: { _error: reason, _failedAt: new Date().toISOString() },
+    },
   });
 }
