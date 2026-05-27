@@ -101,10 +101,11 @@ export async function POST(req: NextRequest) {
     examDate = parsed;
   }
 
-  // "free" is a UI-only sentinel — map it to haiku so PRO users who pick
-  // a real model still get it; FREE users will be routed by ingestCourse anyway.
-  const rawModel = (formData.get("model") as string | null) ?? "haiku";
-  const modelChoice = rawModel === "free" ? "haiku" : rawModel;
+  // modelChoice is the FreeLLM model ID (e.g. "gemini-2.5-flash", "auto") for FREE users,
+  // or a Claude tier ID ("haiku" | "sonnet" | "opus") for PRO users.
+  // Keep "free" sentinel for backward compat → map to "auto".
+  const rawModel = (formData.get("model") as string | null) ?? "auto";
+  const modelChoice = rawModel === "free" ? "auto" : rawModel;
   const pasteText = (formData.get("pasteText") as string | null)?.trim() ?? "";
   const files = formData.getAll("files") as File[];
 

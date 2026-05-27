@@ -53,8 +53,8 @@ export default async function UpgradePage() {
         </h1>
 
         <p style={{ color: "var(--text-dim)", fontSize: 16, marginBottom: 40, lineHeight: 1.6 }}>
-          Pro gives you access to Claude Haiku, Sonnet, and Opus —
-          Anthropic&apos;s most accurate models for study plan generation.
+          Free users get Gemini, Llama, Qwen, and more. Pro unlocks Claude Haiku,
+          Sonnet, and Opus — Anthropic&apos;s most accurate models for study plan generation.
         </p>
 
         {/* Feature comparison */}
@@ -80,9 +80,10 @@ export default async function UpgradePage() {
               Free
             </div>
             {[
-              "Gemini 2.5 Flash",
-              "Groq (Llama)",
-              "OpenRouter models",
+              "Gemini 2.5 & 3.5 Flash",
+              "Llama 3.3 & 4 Scout (Groq)",
+              "Qwen3 32B (Groq)",
+              "6 model choices",
               "Unlimited courses",
             ].map((f) => (
               <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 14 }}>

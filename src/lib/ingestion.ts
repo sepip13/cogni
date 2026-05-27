@@ -204,9 +204,14 @@ export async function ingestCourse(
       console.warn(`[ingest:${courseId}] ⚠ FreeLLMAPI not configured`);
       lastError = lastError || "FreeLLMAPI not configured (FREELLMAPI_URL / FREELLMAPI_KEY missing)";
     } else {
-      console.log(`[ingest:${courseId}] ▶ Calling FreeLLMAPI — model=${FREELLMAPI_MODEL}`);
+      // Use the model the user picked if it's a free-tier model ID;
+      // fall back to the env-var default when it's a Claude model name (PRO fallback path).
+      const freeLLMModel = MODEL_MAP[modelChoice]
+        ? (FREELLMAPI_MODEL || "auto")   // PRO fallback — Claude model name, use env default
+        : (modelChoice || "auto");       // FREE user — use their chosen model ID
+      console.log(`[ingest:${courseId}] ▶ Calling FreeLLMAPI — model=${freeLLMModel}`);
       try {
-        plan = await callFreeLLMAPI(userMessage);
+        plan = await callFreeLLMAPI(userMessage, freeLLMModel);
         console.log(`[ingest:${courseId}] ✓ FreeLLMAPI responded — topics=${plan.topics.length}`);
       } catch (freeErr) {
         lastError = freeErr instanceof Error ? freeErr.message : String(freeErr);
@@ -325,7 +330,7 @@ async function callClaude(model: string, userMessage: string): Promise<Plan> {
  * FreeLLMAPI doesn't support tool_use, so we ask the model to return raw JSON
  * matching the Plan schema and parse it ourselves.
  */
-async function callFreeLLMAPI(userMessage: string): Promise<Plan> {
+async function callFreeLLMAPI(userMessage: string, modelId: string = FREELLMAPI_MODEL): Promise<Plan> {
   const url = new URL(`${FREELLMAPI_URL}/v1/chat/completions`);
   const transport = url.protocol === "https:" ? await import("node:https") : await import("node:http");
 
@@ -348,7 +353,7 @@ async function callFreeLLMAPI(userMessage: string): Promise<Plan> {
 }`;
 
   const body = JSON.stringify({
-    model: FREELLMAPI_MODEL,
+    model: modelId,
     max_tokens: MAX_TOKENS,
     temperature: TEMPERATURE,
     response_format: { type: "json_object" },

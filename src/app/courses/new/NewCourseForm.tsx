@@ -22,14 +22,26 @@ interface SelectedFile {
 
 type SubmitState = "idle" | "uploading" | "error";
 
-const MODELS = [
-  { id: "free",   label: "Free AI",  desc: "Gemini / Groq",  pro: false },
-  { id: "haiku",  label: "Haiku",    desc: "Fast (~10s)",    pro: true  },
-  { id: "sonnet", label: "Sonnet",   desc: "Balanced (~30s)", pro: true  },
-  { id: "opus",   label: "Opus",     desc: "Best (~2min)",   pro: true  },
+// ── Model definitions ──────────────────────────────────────────────────────
+
+const FREE_MODELS = [
+  { id: "auto",                                       label: "Auto",       desc: "Best available",  provider: "Router"    },
+  { id: "gemini-2.5-flash",                           label: "Gemini 2.5", desc: "1M ctx · quality", provider: "Google"    },
+  { id: "gemini-3.5-flash",                           label: "Gemini 3.5", desc: "Latest",          provider: "Google"    },
+  { id: "llama-3.3-70b-versatile",                    label: "Llama 3.3",  desc: "Fast · 131K ctx", provider: "Groq"      },
+  { id: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Llama 4",    desc: "Scout",           provider: "Groq"      },
+  { id: "qwen/qwen3-32b",                             label: "Qwen3 32B",  desc: "Reasoning",       provider: "Groq"      },
 ] as const;
 
-type ModelChoice = (typeof MODELS)[number]["id"];
+const PRO_MODELS = [
+  { id: "haiku",  label: "Haiku",  desc: "Fast (~10s)",  provider: "Anthropic" },
+  { id: "sonnet", label: "Sonnet", desc: "Balanced",     provider: "Anthropic" },
+  { id: "opus",   label: "Opus",   desc: "Best quality", provider: "Anthropic" },
+] as const;
+
+type FreeModelId = (typeof FREE_MODELS)[number]["id"];
+type ProModelId  = (typeof PRO_MODELS)[number]["id"];
+type ModelChoice = FreeModelId | ProModelId;
 
 interface NewCourseFormProps {
   userPlan: "FREE" | "PRO";
@@ -42,7 +54,7 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [courseName, setCourseName] = useState("");
   const [examDate, setExamDate] = useState("");
-  const [model, setModel] = useState<ModelChoice>(userPlan === "PRO" ? "haiku" : "free");
+  const [model, setModel] = useState<ModelChoice>(userPlan === "PRO" ? "haiku" : "auto");
   const [pasteText, setPasteText] = useState("");
   const [showPaste, setShowPaste] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -213,99 +225,194 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
         />
       </div>
 
-      {/* Model selector */}
+      {/* ── Model selector ──────────────────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <label
-            style={{ fontSize: 13, fontWeight: 600, color: "var(--text-dim)" }}
+        <label
+          style={{
+            display: "block",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "var(--text-dim)",
+            marginBottom: 12,
+          }}
+        >
+          AI Model
+        </label>
+
+        {/* Free models */}
+        <div style={{ marginBottom: 12 }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: "var(--text-faint)",
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+              marginBottom: 8,
+            }}
           >
-            AI Model
-          </label>
-          {userPlan === "FREE" && (
-            <a
-              href="/upgrade"
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--accent)",
-                background: "var(--accent-soft)",
-                padding: "2px 8px",
-                borderRadius: 20,
-                textDecoration: "none",
-                letterSpacing: "0.02em",
-              }}
-            >
-              ✦ Upgrade to Pro
-            </a>
-          )}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
-          {MODELS.map((m) => {
-            const locked = m.pro && userPlan === "FREE";
-            const selected = model === m.id;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => {
-                  if (locked) { router.push("/upgrade"); return; }
-                  setModel(m.id);
-                }}
-                disabled={uploading}
-                title={locked ? "Pro plan required — click to upgrade" : undefined}
-                style={{
-                  padding: "10px 6px",
-                  borderRadius: 10,
-                  border: selected
-                    ? "2px solid var(--accent)"
-                    : "1px solid var(--border-strong)",
-                  background: locked
-                    ? "var(--surface)"
-                    : selected
-                    ? "var(--surface-2)"
-                    : "var(--surface)",
-                  cursor: uploading ? "default" : "pointer",
-                  transition: "all 0.15s",
-                  textAlign: "center",
-                  opacity: locked ? 0.55 : 1,
-                  position: "relative",
-                }}
-              >
-                {locked && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: 6,
-                      right: 6,
-                      fontSize: 10,
-                      lineHeight: 1,
-                    }}
-                    aria-hidden="true"
-                  >
-                    🔒
-                  </span>
-                )}
-                <div
+            Free
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            {FREE_MODELS.map((m) => {
+              const selected = model === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => { if (!uploading) setModel(m.id); }}
+                  disabled={uploading}
                   style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: selected ? "var(--accent)" : "var(--text)",
+                    padding: "10px 10px 9px",
+                    borderRadius: 10,
+                    border: selected
+                      ? "2px solid var(--accent)"
+                      : "1px solid var(--border-strong)",
+                    background: selected ? "var(--surface-2)" : "var(--surface)",
+                    cursor: uploading ? "default" : "pointer",
+                    transition: "all 0.15s",
+                    textAlign: "left",
                   }}
                 >
-                  {m.label}
-                </div>
-                <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 2 }}>
-                  {m.desc}
-                </div>
-              </button>
-            );
-          })}
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: selected ? "var(--accent-2)" : "var(--text-faint)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      marginBottom: 3,
+                    }}
+                  >
+                    {m.provider}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: selected ? "var(--accent)" : "var(--text)",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {m.label}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
+                    {m.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        {userPlan === "FREE" && (
-          <p style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
-            Free plan uses Gemini 2.5 Flash · Groq · OpenRouter
-          </p>
-        )}
+
+        {/* Claude Pro models */}
+        <div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: "var(--accent)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+              }}
+            >
+              ✦ Claude Pro
+            </div>
+            {userPlan === "FREE" && (
+              <a
+                href="/upgrade"
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--accent)",
+                  background: "var(--accent-soft)",
+                  padding: "2px 8px",
+                  borderRadius: 20,
+                  textDecoration: "none",
+                }}
+              >
+                Upgrade →
+              </a>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            {PRO_MODELS.map((m) => {
+              const locked = userPlan === "FREE";
+              const selected = model === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    if (locked) { router.push("/upgrade"); return; }
+                    if (!uploading) setModel(m.id);
+                  }}
+                  disabled={uploading}
+                  title={locked ? "Pro plan required — click to upgrade" : undefined}
+                  style={{
+                    padding: "10px 10px 9px",
+                    borderRadius: 10,
+                    border: selected
+                      ? "2px solid var(--accent)"
+                      : "1px solid var(--border-strong)",
+                    background: locked
+                      ? "var(--surface)"
+                      : selected
+                      ? "var(--surface-2)"
+                      : "var(--surface)",
+                    cursor: uploading ? "default" : "pointer",
+                    transition: "all 0.15s",
+                    textAlign: "left",
+                    opacity: locked ? 0.45 : 1,
+                    position: "relative",
+                  }}
+                >
+                  {locked && (
+                    <span
+                      style={{ position: "absolute", top: 6, right: 6, fontSize: 11 }}
+                      aria-hidden="true"
+                    >
+                      🔒
+                    </span>
+                  )}
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "var(--text-faint)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      marginBottom: 3,
+                    }}
+                  >
+                    {m.provider}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: selected ? "var(--accent)" : "var(--text)",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {m.label}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
+                    {m.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Dropzone */}
