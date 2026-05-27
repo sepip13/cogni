@@ -2,14 +2,28 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Metadata } from "next";
+import { UpgradeButton } from "./UpgradeButton";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Upgrade to Pro — Cogni",
 };
 
-export default async function UpgradePage() {
+export default async function UpgradePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ success?: string; canceled?: string }>;
+}) {
   const session = await auth();
-  if (!session?.user) redirect("/auth/signin");
+  if (!session?.user?.id) redirect("/auth/signin");
+
+  const { success, canceled } = await searchParams;
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { plan: true },
+  });
+  const isPro = dbUser?.plan === "PRO";
 
   return (
     <AppLayout>
@@ -22,6 +36,53 @@ export default async function UpgradePage() {
         }}
         className="fade-in"
       >
+        {/* Success banner */}
+        {success && (
+          <div style={{
+            background: "var(--accent-soft)",
+            border: "1px solid var(--accent)",
+            borderRadius: 12,
+            padding: "14px 20px",
+            marginBottom: 32,
+            fontSize: 14,
+            color: "var(--accent)",
+            fontWeight: 600,
+          }}>
+            🎉 Payment successful! Your account is now Pro.
+          </div>
+        )}
+
+        {/* Canceled banner */}
+        {canceled && (
+          <div style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 12,
+            padding: "14px 20px",
+            marginBottom: 32,
+            fontSize: 14,
+            color: "var(--text-dim)",
+          }}>
+            Payment canceled — you can upgrade anytime.
+          </div>
+        )}
+
+        {/* Already Pro banner */}
+        {isPro && !success && (
+          <div style={{
+            background: "var(--accent-soft)",
+            border: "1px solid var(--accent)",
+            borderRadius: 12,
+            padding: "14px 20px",
+            marginBottom: 32,
+            fontSize: 14,
+            color: "var(--accent)",
+            fontWeight: 600,
+          }}>
+            ✦ You&apos;re already on the Pro plan!
+          </div>
+        )}
+
         {/* Badge */}
         <div
           style={{
@@ -53,8 +114,8 @@ export default async function UpgradePage() {
         </h1>
 
         <p style={{ color: "var(--text-dim)", fontSize: 16, marginBottom: 40, lineHeight: 1.6 }}>
-          Free users get Gemini, Llama, Qwen, and more. Pro unlocks Claude Haiku,
-          Sonnet, and Opus — Anthropic&apos;s most accurate models for study plan generation.
+          Pro gives you access to Claude Haiku, Sonnet, and Opus —
+          Anthropic&apos;s most accurate models for study plan generation.
         </p>
 
         {/* Feature comparison */}
@@ -80,11 +141,10 @@ export default async function UpgradePage() {
               Free
             </div>
             {[
-              "Gemini 2.5 & 3.5 Flash",
-              "Llama 3.3 & 4 Scout (Groq)",
-              "Qwen3 32B (Groq)",
-              "6 model choices",
+              "16 free AI models",
+              "Gemini · Groq · OpenRouter",
               "Unlimited courses",
+              "All core features",
             ].map((f) => (
               <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 14 }}>
                 <span style={{ color: "var(--accent-2)" }}>✓</span>
@@ -103,7 +163,7 @@ export default async function UpgradePage() {
             }}
           >
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)", marginBottom: 16, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              ✦ Pro
+              ✦ Pro — $9.99/mo
             </div>
             {[
               "Everything in Free",
@@ -120,26 +180,30 @@ export default async function UpgradePage() {
         </div>
 
         {/* CTA */}
-        <a
-          href="mailto:support@cogni.futuresage.online?subject=Pro Plan Request"
-          style={{
-            display: "inline-block",
-            padding: "14px 40px",
-            background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-            color: "var(--bg)",
-            borderRadius: 12,
-            fontSize: 15,
-            fontWeight: 700,
-            textDecoration: "none",
-            marginBottom: 16,
-          }}
-        >
-          Request Pro Access →
-        </a>
-
-        <p style={{ fontSize: 13, color: "var(--text-faint)" }}>
-          Contact us and we&apos;ll activate your account within 24 hours.
-        </p>
+        {!isPro ? (
+          <>
+            <UpgradeButton />
+            <p style={{ fontSize: 13, color: "var(--text-faint)" }}>
+              Secure payment via Stripe · Cancel anytime
+            </p>
+          </>
+        ) : (
+          <a
+            href="/courses/new"
+            style={{
+              display: "inline-block",
+              padding: "14px 40px",
+              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+              color: "var(--bg)",
+              borderRadius: 12,
+              fontSize: 15,
+              fontWeight: 700,
+              textDecoration: "none",
+            }}
+          >
+            Start a new course →
+          </a>
+        )}
       </div>
     </AppLayout>
   );
