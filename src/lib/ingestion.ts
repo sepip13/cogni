@@ -1,9 +1,16 @@
 import { prisma } from "@/lib/prisma";
 
-// Capture API key at module load time so it is always available,
+// Capture API keys at module load time so they are always available,
 // even inside next/server `after()` callbacks where process.env
 // may not be populated the same way as during request handling.
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
+
+// FreeLLMAPI — local OpenAI-compatible proxy that aggregates 12 free providers.
+// Set FREELLMAPI_URL to point at the running freellmapi server (e.g. http://localhost:3001).
+// Set FREELLMAPI_KEY to the unified API key shown on first startup.
+const FREELLMAPI_URL = (process.env.FREELLMAPI_URL ?? "").replace(/\/$/, "");
+const FREELLMAPI_KEY = process.env.FREELLMAPI_KEY ?? "";
+const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL ?? "auto"; // "auto" lets the router pick
 
 const MODEL_MAP: Record<string, string> = {
   haiku: "claude-haiku-4-5-20251001",
@@ -124,17 +131,15 @@ interface Plan {
   }[];
 }
 
+/** Returns true when the error message indicates an Anthropic billing failure. */
+function isCreditError(msg: string): boolean {
+  return msg.includes("credit balance is too low") || msg.includes("insufficient_quota");
+}
+
 export async function ingestCourse(courseId: string, modelChoice = "haiku"): Promise<void> {
   console.log(`[ingest:${courseId}] ▶ START — model=${modelChoice} ts=${new Date().toISOString()}`);
 
-  if (!ANTHROPIC_API_KEY) {
-    const reason = "ANTHROPIC_API_KEY is not set — check server environment variables.";
-    console.error(`[ingest:${courseId}] ✗ ${reason}`);
-    await markFailed(courseId, reason);
-    return;
-  }
-  console.log(`[ingest:${courseId}] ✓ API key present (length=${ANTHROPIC_API_KEY.length})`);
-
+  // ── DB lookup ────────────────────────────────────────────────────────────
   let course: { rawText: string | null; examDate: Date | null } | null;
   try {
     course = await prisma.course.findUnique({
@@ -156,28 +161,61 @@ export async function ingestCourse(courseId: string, modelChoice = "haiku"): Pro
   }
   console.log(`[ingest:${courseId}] ✓ rawText length=${course.rawText.length} chars`);
 
-  const primaryModel = MODEL_MAP[modelChoice] ?? MODEL_MAP.haiku;
-  console.log(`[ingest:${courseId}] ▶ Calling Claude — model=${primaryModel}`);
-
   const userMessage = buildUserMessage(course.rawText, course.examDate);
+  let plan: Plan | null = null;
+  let lastError = "";
 
-  let plan: Plan;
-  try {
-    plan = await callClaude(primaryModel, userMessage);
-    console.log(`[ingest:${courseId}] ✓ Claude responded — topics=${plan.topics.length}`);
-  } catch (primaryErr) {
-    const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-    console.error(`[ingest:${courseId}] ✗ Primary model (${primaryModel}) failed: ${primaryMsg}`);
-    console.log(`[ingest:${courseId}] ▶ Retrying with fallback model=${FALLBACK_MODEL}`);
+  // ── Tier 1: Claude (primary + sonnet fallback) ───────────────────────────
+  if (ANTHROPIC_API_KEY) {
+    console.log(`[ingest:${courseId}] ✓ Anthropic key present (length=${ANTHROPIC_API_KEY.length})`);
+    const primaryModel = MODEL_MAP[modelChoice] ?? MODEL_MAP.haiku;
+
     try {
-      plan = await callClaude(FALLBACK_MODEL, userMessage);
-      console.log(`[ingest:${courseId}] ✓ Fallback Claude responded — topics=${plan.topics.length}`);
-    } catch (fallbackErr) {
-      const msg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-      console.error(`[ingest:${courseId}] ✗ Both models failed. Last error: ${msg}`);
-      await markFailed(courseId, `Primary (${primaryModel}): ${primaryMsg} | Fallback (${FALLBACK_MODEL}): ${msg}`);
-      return;
+      console.log(`[ingest:${courseId}] ▶ Calling Claude — model=${primaryModel}`);
+      plan = await callClaude(primaryModel, userMessage);
+      console.log(`[ingest:${courseId}] ✓ Claude responded — topics=${plan.topics.length}`);
+    } catch (primaryErr) {
+      const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      console.error(`[ingest:${courseId}] ✗ Primary Claude failed: ${primaryMsg}`);
+      lastError = primaryMsg;
+
+      if (!isCreditError(primaryMsg)) {
+        // Non-billing error — try sonnet fallback before giving up on Claude
+        try {
+          console.log(`[ingest:${courseId}] ▶ Retrying with fallback model=${FALLBACK_MODEL}`);
+          plan = await callClaude(FALLBACK_MODEL, userMessage);
+          console.log(`[ingest:${courseId}] ✓ Fallback Claude responded — topics=${plan.topics.length}`);
+        } catch (fallbackErr) {
+          lastError = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+          console.error(`[ingest:${courseId}] ✗ Fallback Claude also failed: ${lastError}`);
+        }
+      } else {
+        console.warn(`[ingest:${courseId}] ⚠ Anthropic credit exhausted — skipping Claude fallback`);
+      }
     }
+  } else {
+    console.warn(`[ingest:${courseId}] ⚠ ANTHROPIC_API_KEY not set — skipping Claude`);
+    lastError = "ANTHROPIC_API_KEY not set";
+  }
+
+  // ── Tier 2: FreeLLMAPI (free aggregator — Gemini, Groq, Mistral, …) ──────
+  if (!plan && FREELLMAPI_URL && FREELLMAPI_KEY) {
+    console.log(`[ingest:${courseId}] ▶ Trying FreeLLMAPI — url=${FREELLMAPI_URL} model=${FREELLMAPI_MODEL}`);
+    try {
+      plan = await callFreeLLMAPI(userMessage);
+      console.log(`[ingest:${courseId}] ✓ FreeLLMAPI responded — topics=${plan.topics.length}`);
+    } catch (freeErr) {
+      lastError = freeErr instanceof Error ? freeErr.message : String(freeErr);
+      console.error(`[ingest:${courseId}] ✗ FreeLLMAPI failed: ${lastError}`);
+    }
+  } else if (!plan) {
+    console.warn(`[ingest:${courseId}] ⚠ FreeLLMAPI not configured (FREELLMAPI_URL / FREELLMAPI_KEY missing)`);
+  }
+
+  // ── Final result ─────────────────────────────────────────────────────────
+  if (!plan) {
+    await markFailed(courseId, lastError || "All LLM providers failed with no specific error.");
+    return;
   }
 
   try {
@@ -277,6 +315,109 @@ async function callClaude(model: string, userMessage: string): Promise<Plan> {
     throw new Error("Claude did not return a tool_use block");
   }
   return toolBlock.input as Plan;
+}
+
+/**
+ * Calls the FreeLLMAPI OpenAI-compatible endpoint with JSON-mode output.
+ * FreeLLMAPI doesn't support tool_use, so we ask the model to return raw JSON
+ * matching the Plan schema and parse it ourselves.
+ */
+async function callFreeLLMAPI(userMessage: string): Promise<Plan> {
+  const https = await import("node:https");
+  const url = new URL(`${FREELLMAPI_URL}/v1/chat/completions`);
+
+  const jsonSchema = `{
+  "course_name": "string",
+  "course_code": "string|null",
+  "total_prep_time_hours": "number",
+  "topics": [{
+    "num": "string",
+    "title": "string",
+    "priority": "high|med|low",
+    "priority_label": "string",
+    "why": "string",
+    "time_minutes": "number",
+    "pages": "string",
+    "subtopics": [{"text": "string", "time_minutes": "number"}],
+    "practice_questions": [{"q": "string", "source": "string", "expected_answer": "string"}],
+    "sources": [{"name": "string", "page": "string"}]
+  }]
+}`;
+
+  const body = JSON.stringify({
+    model: FREELLMAPI_MODEL,
+    max_tokens: MAX_TOKENS,
+    temperature: TEMPERATURE,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `${SYSTEM_PROMPT}\n\nIMPORTANT: Instead of calling a tool, return ONLY valid JSON matching this exact schema (no markdown, no explanation):\n${jsonSchema}`,
+      },
+      { role: "user", content: userMessage },
+    ],
+  });
+
+  const text = await new Promise<string>((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: url.pathname,
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "authorization": `Bearer ${FREELLMAPI_KEY}`,
+        },
+        timeout: TIMEOUT_MS,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf-8");
+          if (res.statusCode !== 200) {
+            reject(new Error(`FreeLLMAPI ${res.statusCode}: ${raw}`));
+            return;
+          }
+          resolve(raw);
+        });
+      }
+    );
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("FreeLLMAPI timeout")); });
+    req.write(body);
+    req.end();
+  });
+
+  const data = JSON.parse(text);
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error("FreeLLMAPI returned no content");
+
+  let plan: Plan;
+  try {
+    plan = JSON.parse(content) as Plan;
+  } catch {
+    // Some models wrap JSON in ```json ... ``` — strip it
+    const stripped = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    plan = JSON.parse(stripped) as Plan;
+  }
+
+  if (!plan.course_name || !Array.isArray(plan.topics)) {
+    throw new Error("FreeLLMAPI response missing required fields (course_name, topics)");
+  }
+
+  // Normalise priority values in case the model drifts slightly
+  plan.topics = plan.topics.map((t) => ({
+    ...t,
+    priority: (["high", "med", "low"].includes(t.priority) ? t.priority : "med") as Plan["topics"][number]["priority"],
+    priority_label: t.priority_label ?? t.priority.toUpperCase(),
+    subtopics: t.subtopics ?? [],
+    practice_questions: t.practice_questions ?? [],
+    sources: t.sources ?? [],
+  }));
+
+  return plan;
 }
 
 function buildUserMessage(rawText: string, examDate: Date | null): string {
