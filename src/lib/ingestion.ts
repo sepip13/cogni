@@ -326,8 +326,8 @@ async function callClaude(model: string, userMessage: string): Promise<Plan> {
  * matching the Plan schema and parse it ourselves.
  */
 async function callFreeLLMAPI(userMessage: string): Promise<Plan> {
-  const https = await import("node:https");
   const url = new URL(`${FREELLMAPI_URL}/v1/chat/completions`);
+  const transport = url.protocol === "https:" ? await import("node:https") : await import("node:http");
 
   const jsonSchema = `{
   "course_name": "string",
@@ -362,7 +362,7 @@ async function callFreeLLMAPI(userMessage: string): Promise<Plan> {
   });
 
   const text = await new Promise<string>((resolve, reject) => {
-    const req = https.request(
+    const req = transport.request(
       {
         hostname: url.hostname,
         port: url.port || (url.protocol === "https:" ? 443 : 80),
