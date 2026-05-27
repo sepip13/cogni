@@ -26,32 +26,32 @@ type SubmitState = "idle" | "uploading" | "error";
 
 const FREE_MODELS = [
   // Router
-  { id: "auto",                                                label: "Auto",          desc: "Best available",   provider: "Router"     },
+  { id: "auto",                                               label: "🎲 Roll The Dice",   desc: "may god be with u",        provider: "Router"     },
   // Google
-  { id: "gemini-2.5-flash",                                   label: "Gemini 2.5",    desc: "1M ctx · quality", provider: "Google"     },
-  { id: "gemini-3.5-flash",                                   label: "Gemini 3.5",    desc: "Latest",           provider: "Google"     },
-  { id: "gemini-2.5-flash-lite",                              label: "Gemini Lite",   desc: "Fast & light",     provider: "Google"     },
-  { id: "gemini-3-flash-preview",                             label: "Gemini 3",      desc: "New gen preview",  provider: "Google"     },
+  { id: "gemini-2.5-flash",                                  label: "✅ Solid 7 Energy",   desc: "not failing today",        provider: "Google"     },
+  { id: "gemini-3.5-flash",                                  label: "🎯 I Want A 9",       desc: "no sleep, all A's",        provider: "Google"     },
+  { id: "gemini-2.5-flash-lite",                             label: "⚡ 5.5 Speedrun",     desc: "just. need. to. pass.",    provider: "Google"     },
+  { id: "gemini-3-flash-preview",                            label: "🔮 Next Gen Nerd",    desc: "preview of greatness",     provider: "Google"     },
   // Groq
-  { id: "llama-3.3-70b-versatile",                            label: "Llama 3.3",     desc: "Fast · 131K ctx",  provider: "Groq"       },
-  { id: "meta-llama/llama-4-scout-17b-16e-instruct",         label: "Llama 4 Scout", desc: "131K ctx",         provider: "Groq"       },
-  { id: "llama-3.1-8b-instant",                              label: "Llama 3.1 8B",  desc: "Ultra fast",       provider: "Groq"       },
-  { id: "openai/gpt-oss-120b",                               label: "GPT-OSS 120B",  desc: "Large · 131K",     provider: "Groq"       },
-  { id: "openai/gpt-oss-20b",                                label: "GPT-OSS 20B",   desc: "Fast & smart",     provider: "Groq"       },
-  { id: "groq/compound",                                     label: "Compound",      desc: "Agentic",          provider: "Groq"       },
-  { id: "qwen/qwen3-32b",                                    label: "Qwen3 32B",     desc: "Reasoning",        provider: "Groq"       },
+  { id: "llama-3.3-70b-versatile",                           label: "🦙 Don't Fail Me",    desc: "5.5 and i'm free",         provider: "Groq"       },
+  { id: "meta-llama/llama-4-scout-17b-16e-instruct",        label: "👁 Reads Prof Minds", desc: "passes on vibes alone",    provider: "Groq"       },
+  { id: "llama-3.1-8b-instant",                             label: "😱 Panic Mode",        desc: "ctrl+s at 11:59pm",        provider: "Groq"       },
+  { id: "openai/gpt-oss-120b",                              label: "🧠 Actually Studied",  desc: "unlike you lol",           provider: "Groq"       },
+  { id: "openai/gpt-oss-20b",                               label: "😎 Chill B Student",   desc: "B is fine, relax",         provider: "Groq"       },
+  { id: "groq/compound",                                    label: "👥 Group Carry",        desc: "u're the smart friend",    provider: "Groq"       },
+  { id: "qwen/qwen3-32b",                                   label: "🔢 GPA Saver",         desc: "need 72% on final",        provider: "Groq"       },
   // SambaNova
-  { id: "DeepSeek-V3.1",                                     label: "DeepSeek V3",   desc: "131K ctx",         provider: "SambaNova"  },
+  { id: "DeepSeek-V3.1",                                    label: "🌊 Rabbit Hole King",  desc: "read everything lol",      provider: "SambaNova"  },
   // OpenRouter free tier
-  { id: "nvidia/nemotron-3-super-120b-a12b:free",            label: "Nemotron 120B", desc: "1M ctx · free",    provider: "OpenRouter" },
-  { id: "google/gemma-4-31b-it:free",                        label: "Gemma 4 31B",   desc: "262K ctx · free",  provider: "OpenRouter" },
-  { id: "nousresearch/hermes-3-llama-3.1-405b:free",         label: "Hermes 405B",   desc: "Huge · free",      provider: "OpenRouter" },
+  { id: "nvidia/nemotron-3-super-120b-a12b:free",           label: "☕ 5 Espressos Deep",  desc: "overcaffeinated genius",   provider: "OpenRouter" },
+  { id: "google/gemma-4-31b-it:free",                       label: "💎 Surprise A+",        desc: "didn't study, still aced", provider: "OpenRouter" },
+  { id: "nousresearch/hermes-3-llama-3.1-405b:free",        label: "👑 Ruins The Curve",   desc: "everyone hates u now",     provider: "OpenRouter" },
 ] as const;
 
 const PRO_MODELS = [
-  { id: "haiku",  label: "Haiku",  desc: "Fast (~10s)",  provider: "Anthropic" },
-  { id: "sonnet", label: "Sonnet", desc: "Balanced",     provider: "Anthropic" },
-  { id: "opus",   label: "Opus",   desc: "Best quality", provider: "Anthropic" },
+  { id: "haiku",  label: "🚀 Pro Student Fuel", desc: "fast & sharp (~10s)",  provider: "Anthropic" },
+  { id: "sonnet", label: "📖 Valedictorian",    desc: "first in class",       provider: "Anthropic" },
+  { id: "opus",   label: "🎓 Prof's Nightmare", desc: "knows more than prof", provider: "Anthropic" },
 ] as const;
 
 type FreeModelId = (typeof FREE_MODELS)[number]["id"];
