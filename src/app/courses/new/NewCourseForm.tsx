@@ -23,21 +23,26 @@ interface SelectedFile {
 type SubmitState = "idle" | "uploading" | "error";
 
 const MODELS = [
-  { id: "haiku", label: "Haiku", desc: "Fast (~10s)" },
-  { id: "sonnet", label: "Sonnet", desc: "Balanced (~30s)" },
-  { id: "opus", label: "Opus", desc: "Best quality (~2min)" },
+  { id: "free",   label: "Free AI",  desc: "Gemini / Groq",  pro: false },
+  { id: "haiku",  label: "Haiku",    desc: "Fast (~10s)",    pro: true  },
+  { id: "sonnet", label: "Sonnet",   desc: "Balanced (~30s)", pro: true  },
+  { id: "opus",   label: "Opus",     desc: "Best (~2min)",   pro: true  },
 ] as const;
 
 type ModelChoice = (typeof MODELS)[number]["id"];
 
-export function NewCourseForm() {
+interface NewCourseFormProps {
+  userPlan: "FREE" | "PRO";
+}
+
+export function NewCourseForm({ userPlan }: NewCourseFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<SelectedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [courseName, setCourseName] = useState("");
   const [examDate, setExamDate] = useState("");
-  const [model, setModel] = useState<ModelChoice>("haiku");
+  const [model, setModel] = useState<ModelChoice>(userPlan === "PRO" ? "haiku" : "free");
   const [pasteText, setPasteText] = useState("");
   const [showPaste, setShowPaste] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -210,57 +215,97 @@ export function NewCourseForm() {
 
       {/* Model selector */}
       <div style={{ marginBottom: 24 }}>
-        <label
-          style={{
-            display: "block",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "var(--text-dim)",
-            marginBottom: 8,
-          }}
-        >
-          AI Model
-        </label>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            gap: 8,
-          }}
-        >
-          {MODELS.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setModel(m.id)}
-              disabled={uploading}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <label
+            style={{ fontSize: 13, fontWeight: 600, color: "var(--text-dim)" }}
+          >
+            AI Model
+          </label>
+          {userPlan === "FREE" && (
+            <a
+              href="/upgrade"
               style={{
-                padding: "10px 8px",
-                borderRadius: 10,
-                border: model === m.id
-                  ? "2px solid var(--accent)"
-                  : "1px solid var(--border-strong)",
-                background: model === m.id ? "var(--surface-2)" : "var(--surface)",
-                cursor: uploading ? "default" : "pointer",
-                transition: "all 0.15s",
-                textAlign: "center",
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--accent)",
+                background: "var(--accent-soft)",
+                padding: "2px 8px",
+                borderRadius: 20,
+                textDecoration: "none",
+                letterSpacing: "0.02em",
               }}
             >
-              <div
+              ✦ Upgrade to Pro
+            </a>
+          )}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+          {MODELS.map((m) => {
+            const locked = m.pro && userPlan === "FREE";
+            const selected = model === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  if (locked) { router.push("/upgrade"); return; }
+                  setModel(m.id);
+                }}
+                disabled={uploading}
+                title={locked ? "Pro plan required — click to upgrade" : undefined}
                 style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: model === m.id ? "var(--accent)" : "var(--text)",
+                  padding: "10px 6px",
+                  borderRadius: 10,
+                  border: selected
+                    ? "2px solid var(--accent)"
+                    : "1px solid var(--border-strong)",
+                  background: locked
+                    ? "var(--surface)"
+                    : selected
+                    ? "var(--surface-2)"
+                    : "var(--surface)",
+                  cursor: uploading ? "default" : "pointer",
+                  transition: "all 0.15s",
+                  textAlign: "center",
+                  opacity: locked ? 0.55 : 1,
+                  position: "relative",
                 }}
               >
-                {m.label}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>
-                {m.desc}
-              </div>
-            </button>
-          ))}
+                {locked && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 6,
+                      right: 6,
+                      fontSize: 10,
+                      lineHeight: 1,
+                    }}
+                    aria-hidden="true"
+                  >
+                    🔒
+                  </span>
+                )}
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: selected ? "var(--accent)" : "var(--text)",
+                  }}
+                >
+                  {m.label}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 2 }}>
+                  {m.desc}
+                </div>
+              </button>
+            );
+          })}
         </div>
+        {userPlan === "FREE" && (
+          <p style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 6 }}>
+            Free plan uses Gemini 2.5 Flash · Groq · OpenRouter
+          </p>
+        )}
       </div>
 
       {/* Dropzone */}

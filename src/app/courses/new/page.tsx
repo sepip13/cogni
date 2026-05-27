@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Metadata } from "next";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { NewCourseForm } from "./NewCourseForm";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "New course — Cogni",
@@ -10,7 +11,13 @@ export const metadata: Metadata = {
 
 export default async function NewCoursePage() {
   const session = await auth();
-  if (!session?.user) redirect("/auth/signin");
+  if (!session?.user?.id) redirect("/auth/signin");
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { plan: true },
+  });
+  const userPlan = dbUser?.plan ?? "FREE";
 
   return (
     <AppLayout>
@@ -41,7 +48,7 @@ export default async function NewCoursePage() {
           </p>
         </div>
 
-        <NewCourseForm />
+        <NewCourseForm userPlan={userPlan} />
       </div>
     </AppLayout>
   );

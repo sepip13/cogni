@@ -15,17 +15,19 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  // Confirm course belongs to this user
-  const course = await prisma.course.findUnique({
-    where: { id },
-    select: { id: true, userId: true, status: true },
-  });
+  // Confirm course belongs to this user + fetch user plan
+  const [course, dbUser] = await Promise.all([
+    prisma.course.findUnique({ where: { id }, select: { id: true, userId: true, status: true } }),
+    prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } }),
+  ]);
 
   if (!course || course.userId !== session.user.id) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Idempotent: skip if already READY, re-run if FAILED, block if still PROCESSING another attempt
+  const userPlan = dbUser?.plan ?? "FREE";
+
+  // Idempotent: skip if already READY, re-run if FAILED
   if (course.status === "READY") {
     return NextResponse.json({ status: "READY" });
   }
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Run ingestion after response is sent (Next.js keeps the work alive)
   after(async () => {
     try {
-      await ingestCourse(id);
+      await ingestCourse(id, "haiku", userPlan);
     } catch (err) {
       console.error(`[process:${id}] unhandled error:`, err);
     }

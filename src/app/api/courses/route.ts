@@ -62,6 +62,10 @@ export async function POST(req: NextRequest) {
 
   const userId = session.user.id;
 
+  // Fetch user plan
+  const dbUser = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } });
+  const userPlan = dbUser?.plan ?? "FREE";
+
   // Rate limit: max 3 courses per user per day
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -97,7 +101,10 @@ export async function POST(req: NextRequest) {
     examDate = parsed;
   }
 
-  const modelChoice = (formData.get("model") as string | null) ?? "haiku";
+  // "free" is a UI-only sentinel — map it to haiku so PRO users who pick
+  // a real model still get it; FREE users will be routed by ingestCourse anyway.
+  const rawModel = (formData.get("model") as string | null) ?? "haiku";
+  const modelChoice = rawModel === "free" ? "haiku" : rawModel;
   const pasteText = (formData.get("pasteText") as string | null)?.trim() ?? "";
   const files = formData.getAll("files") as File[];
 
@@ -140,7 +147,7 @@ export async function POST(req: NextRequest) {
   // Process files + pasted text after response is sent (Next.js keeps the work alive)
   after(async () => {
     try {
-      await processCourseMaterials(course.id, fileBuffers, pasteText, modelChoice);
+      await processCourseMaterials(course.id, fileBuffers, pasteText, modelChoice, userPlan);
     } catch (err) {
       console.error(`[course:${course.id}] background processing error:`, err);
       await prisma.course
@@ -175,7 +182,8 @@ async function processCourseMaterials(
   courseId: string,
   files: { name: string; type: string; buffer: Buffer }[],
   pasteText: string,
-  modelChoice: string
+  modelChoice: string,
+  userPlan: "FREE" | "PRO" = "FREE"
 ) {
   console.log(`[course:${courseId}] ▶ processCourseMaterials START — files=${files.length} pasteText=${pasteText.length}chars model=${modelChoice}`);
 
@@ -250,8 +258,8 @@ async function processCourseMaterials(
   });
 
   // Kick off LLM ingestion now that raw text is ready
-  console.log(`[course:${courseId}] ▶ Handing off to ingestCourse...`);
-  await ingestCourse(courseId, modelChoice);
+  console.log(`[course:${courseId}] ▶ Handing off to ingestCourse (plan=${userPlan})...`);
+  await ingestCourse(courseId, modelChoice, userPlan);
   console.log(`[course:${courseId}] ✓ processCourseMaterials DONE`);
 }
 

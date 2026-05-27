@@ -131,13 +131,12 @@ interface Plan {
   }[];
 }
 
-/** Returns true when the error message indicates an Anthropic billing failure. */
-function isCreditError(msg: string): boolean {
-  return msg.includes("credit balance is too low") || msg.includes("insufficient_quota");
-}
-
-export async function ingestCourse(courseId: string, modelChoice = "haiku"): Promise<void> {
-  console.log(`[ingest:${courseId}] ▶ START — model=${modelChoice} ts=${new Date().toISOString()}`);
+export async function ingestCourse(
+  courseId: string,
+  modelChoice = "haiku",
+  userPlan: "FREE" | "PRO" = "FREE"
+): Promise<void> {
+  console.log(`[ingest:${courseId}] ▶ START — plan=${userPlan} model=${modelChoice} ts=${new Date().toISOString()}`);
 
   // ── DB lookup ────────────────────────────────────────────────────────────
   let course: { rawText: string | null; examDate: Date | null } | null;
@@ -165,56 +164,60 @@ export async function ingestCourse(courseId: string, modelChoice = "haiku"): Pro
   let plan: Plan | null = null;
   let lastError = "";
 
-  // ── Tier 1: Claude (primary + sonnet fallback) ───────────────────────────
-  if (ANTHROPIC_API_KEY) {
-    console.log(`[ingest:${courseId}] ✓ Anthropic key present (length=${ANTHROPIC_API_KEY.length})`);
-    const primaryModel = MODEL_MAP[modelChoice] ?? MODEL_MAP.haiku;
+  // ── PRO: Claude first ────────────────────────────────────────────────────
+  if (userPlan === "PRO") {
+    if (!ANTHROPIC_API_KEY) {
+      console.warn(`[ingest:${courseId}] ⚠ PRO user but ANTHROPIC_API_KEY not set — falling through to free LLMs`);
+      lastError = "ANTHROPIC_API_KEY not configured on server";
+    } else {
+      const primaryModel = MODEL_MAP[modelChoice] ?? MODEL_MAP.haiku;
+      console.log(`[ingest:${courseId}] ▶ [PRO] Calling Claude — model=${primaryModel}`);
+      try {
+        plan = await callClaude(primaryModel, userMessage);
+        console.log(`[ingest:${courseId}] ✓ Claude responded — topics=${plan.topics.length}`);
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        console.error(`[ingest:${courseId}] ✗ Claude (${primaryModel}) failed: ${lastError}`);
 
-    try {
-      console.log(`[ingest:${courseId}] ▶ Calling Claude — model=${primaryModel}`);
-      plan = await callClaude(primaryModel, userMessage);
-      console.log(`[ingest:${courseId}] ✓ Claude responded — topics=${plan.topics.length}`);
-    } catch (primaryErr) {
-      const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
-      console.error(`[ingest:${courseId}] ✗ Primary Claude failed: ${primaryMsg}`);
-      lastError = primaryMsg;
-
-      if (!isCreditError(primaryMsg)) {
-        // Non-billing error — try sonnet fallback before giving up on Claude
-        try {
-          console.log(`[ingest:${courseId}] ▶ Retrying with fallback model=${FALLBACK_MODEL}`);
-          plan = await callClaude(FALLBACK_MODEL, userMessage);
-          console.log(`[ingest:${courseId}] ✓ Fallback Claude responded — topics=${plan.topics.length}`);
-        } catch (fallbackErr) {
-          lastError = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-          console.error(`[ingest:${courseId}] ✗ Fallback Claude also failed: ${lastError}`);
+        // Try sonnet fallback only for non-billing errors
+        if (!lastError.includes("credit balance is too low")) {
+          console.log(`[ingest:${courseId}] ▶ [PRO] Fallback → ${FALLBACK_MODEL}`);
+          try {
+            plan = await callClaude(FALLBACK_MODEL, userMessage);
+            console.log(`[ingest:${courseId}] ✓ Claude fallback responded — topics=${plan.topics.length}`);
+          } catch (fallbackErr) {
+            lastError = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+            console.error(`[ingest:${courseId}] ✗ Claude fallback also failed: ${lastError}`);
+          }
+        } else {
+          console.warn(`[ingest:${courseId}] ⚠ Anthropic credit exhausted — falling through to free LLMs`);
         }
-      } else {
-        console.warn(`[ingest:${courseId}] ⚠ Anthropic credit exhausted — skipping Claude fallback`);
       }
     }
   } else {
-    console.warn(`[ingest:${courseId}] ⚠ ANTHROPIC_API_KEY not set — skipping Claude`);
-    lastError = "ANTHROPIC_API_KEY not set";
+    console.log(`[ingest:${courseId}] ▶ [FREE] Skipping Claude — using free LLMs only`);
   }
 
-  // ── Tier 2: FreeLLMAPI (free aggregator — Gemini, Groq, Mistral, …) ──────
-  if (!plan && FREELLMAPI_URL && FREELLMAPI_KEY) {
-    console.log(`[ingest:${courseId}] ▶ Trying FreeLLMAPI — url=${FREELLMAPI_URL} model=${FREELLMAPI_MODEL}`);
-    try {
-      plan = await callFreeLLMAPI(userMessage);
-      console.log(`[ingest:${courseId}] ✓ FreeLLMAPI responded — topics=${plan.topics.length}`);
-    } catch (freeErr) {
-      lastError = freeErr instanceof Error ? freeErr.message : String(freeErr);
-      console.error(`[ingest:${courseId}] ✗ FreeLLMAPI failed: ${lastError}`);
-    }
-  } else if (!plan) {
-    console.warn(`[ingest:${courseId}] ⚠ FreeLLMAPI not configured (FREELLMAPI_URL / FREELLMAPI_KEY missing)`);
-  }
-
-  // ── Final result ─────────────────────────────────────────────────────────
+  // ── FREE (always) / PRO fallback: FreeLLMAPI ─────────────────────────────
   if (!plan) {
-    await markFailed(courseId, lastError || "All LLM providers failed with no specific error.");
+    if (!FREELLMAPI_URL || !FREELLMAPI_KEY) {
+      console.warn(`[ingest:${courseId}] ⚠ FreeLLMAPI not configured`);
+      lastError = lastError || "FreeLLMAPI not configured (FREELLMAPI_URL / FREELLMAPI_KEY missing)";
+    } else {
+      console.log(`[ingest:${courseId}] ▶ Calling FreeLLMAPI — model=${FREELLMAPI_MODEL}`);
+      try {
+        plan = await callFreeLLMAPI(userMessage);
+        console.log(`[ingest:${courseId}] ✓ FreeLLMAPI responded — topics=${plan.topics.length}`);
+      } catch (freeErr) {
+        lastError = freeErr instanceof Error ? freeErr.message : String(freeErr);
+        console.error(`[ingest:${courseId}] ✗ FreeLLMAPI failed: ${lastError}`);
+      }
+    }
+  }
+
+  // ── Result ───────────────────────────────────────────────────────────────
+  if (!plan) {
+    await markFailed(courseId, lastError || "All LLM providers failed.");
     return;
   }
 
