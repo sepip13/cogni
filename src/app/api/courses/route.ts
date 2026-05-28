@@ -63,8 +63,9 @@ export async function POST(req: NextRequest) {
   const userId = session.user.id;
 
   // Fetch user plan
-  const dbUser = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } });
+  const dbUser = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true, preferredLanguage: true } });
   const userPlan = dbUser?.plan ?? "FREE";
+  const userLanguage = dbUser?.preferredLanguage ?? "English";
 
   // Rate limit: max 3 courses per user per day
   const startOfDay = new Date();
@@ -101,11 +102,9 @@ export async function POST(req: NextRequest) {
     examDate = parsed;
   }
 
-  // modelChoice is the FreeLLM model ID (e.g. "gemini-2.5-flash", "auto") for FREE users,
-  // or a Claude tier ID ("haiku" | "sonnet" | "opus") for PRO users.
-  // Keep "free" sentinel for backward compat → map to "auto".
   const rawModel = (formData.get("model") as string | null) ?? "auto";
   const modelChoice = rawModel === "free" ? "auto" : rawModel;
+  const educationLevel = (formData.get("educationLevel") as string | null)?.trim() ?? "";
   const pasteText = (formData.get("pasteText") as string | null)?.trim() ?? "";
   const files = formData.getAll("files") as File[];
 
@@ -140,6 +139,7 @@ export async function POST(req: NextRequest) {
     data: {
       userId,
       name,
+      educationLevel: educationLevel || null,
       examDate,
       status: "PROCESSING",
     },
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
   // Process files + pasted text after response is sent (Next.js keeps the work alive)
   after(async () => {
     try {
-      await processCourseMaterials(course.id, fileBuffers, pasteText, modelChoice, userPlan);
+      await processCourseMaterials(course.id, fileBuffers, pasteText, modelChoice, userPlan, userLanguage);
     } catch (err) {
       console.error(`[course:${course.id}] background processing error:`, err);
       await prisma.course
@@ -184,7 +184,8 @@ async function processCourseMaterials(
   files: { name: string; type: string; buffer: Buffer }[],
   pasteText: string,
   modelChoice: string,
-  userPlan: "FREE" | "PRO" = "FREE"
+  userPlan: "FREE" | "PRO" = "FREE",
+  language = "English"
 ) {
   console.log(`[course:${courseId}] ▶ processCourseMaterials START — files=${files.length} pasteText=${pasteText.length}chars model=${modelChoice}`);
 
@@ -260,7 +261,7 @@ async function processCourseMaterials(
 
   // Kick off LLM ingestion now that raw text is ready
   console.log(`[course:${courseId}] ▶ Handing off to ingestCourse (plan=${userPlan})...`);
-  await ingestCourse(courseId, modelChoice, userPlan);
+  await ingestCourse(courseId, modelChoice, userPlan, language);
   console.log(`[course:${courseId}] ✓ processCourseMaterials DONE`);
 }
 

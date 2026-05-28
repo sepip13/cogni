@@ -1,23 +1,9 @@
 import { prisma } from "@/lib/prisma";
 
-// Capture API keys at module load time so they are always available,
-// even inside next/server `after()` callbacks where process.env
-// may not be populated the same way as during request handling.
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
-
-// FreeLLMAPI — local OpenAI-compatible proxy that aggregates 12 free providers.
-// Set FREELLMAPI_URL to point at the running freellmapi server (e.g. http://localhost:3001).
-// Set FREELLMAPI_KEY to the unified API key shown on first startup.
 const FREELLMAPI_URL = (process.env.FREELLMAPI_URL ?? "").replace(/\/$/, "");
 const FREELLMAPI_KEY = process.env.FREELLMAPI_KEY ?? "";
-const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL ?? "auto"; // "auto" lets the router pick
+const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL ?? "auto";
 
-const MODEL_MAP: Record<string, string> = {
-  haiku: "claude-haiku-4-5-20251001",
-  sonnet: "claude-sonnet-4-5",
-  opus: "claude-opus-4-5",
-};
-const FALLBACK_MODEL = "claude-sonnet-4-5";
 const TEMPERATURE = 0.2;
 const MAX_TOKENS = 16384;
 const TIMEOUT_MS = 300_000;
@@ -44,6 +30,29 @@ Rules:
    empty or contains no educational content whatsoever (e.g. a blank page).
 
 Use the study_plan tool to return your result.`;
+
+const EDUCATION_LEVEL_LABELS: Record<string, string> = {
+  college:      "undergraduate college",
+  grad:         "graduate school",
+  highschool:   "high school",
+  medical:      "medical school (e.g. USMLE Step prep)",
+  cert:         "professional certification",
+  standardized: "standardized test prep (e.g. SAT/GRE/GMAT)",
+};
+
+function buildSystemPrompt(educationLevel: string | null, language: string): string {
+  const parts = [SYSTEM_PROMPT];
+  if (educationLevel && EDUCATION_LEVEL_LABELS[educationLevel]) {
+    parts.push(
+      `\n\nStudent context: This student is at the ${EDUCATION_LEVEL_LABELS[educationLevel]} level. ` +
+      `Calibrate terminology, depth, prerequisite assumptions, and time estimates accordingly.`
+    );
+  }
+  if (language && language !== "English") {
+    parts.push(`\n\nRespond in ${language}. All topic titles, explanations, and practice questions must be in ${language}.`);
+  }
+  return parts.join("");
+}
 
 const STUDY_PLAN_TOOL = {
   name: "study_plan",
@@ -133,17 +142,17 @@ interface Plan {
 
 export async function ingestCourse(
   courseId: string,
-  modelChoice = "haiku",
-  userPlan: "FREE" | "PRO" = "FREE"
+  modelChoice = "auto",
+  _userPlan: "FREE" | "PRO" = "FREE",
+  language = "English"
 ): Promise<void> {
-  console.log(`[ingest:${courseId}] ▶ START — plan=${userPlan} model=${modelChoice} ts=${new Date().toISOString()}`);
+  console.log(`[ingest:${courseId}] ▶ START — model=${modelChoice} ts=${new Date().toISOString()}`);
 
-  // ── DB lookup ────────────────────────────────────────────────────────────
-  let course: { rawText: string | null; examDate: Date | null } | null;
+  let course: { rawText: string | null; examDate: Date | null; educationLevel: string | null } | null;
   try {
     course = await prisma.course.findUnique({
       where: { id: courseId },
-      select: { rawText: true, examDate: true },
+      select: { rawText: true, examDate: true, educationLevel: true },
     });
   } catch (dbErr) {
     const reason = `DB lookup failed: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`;
@@ -160,67 +169,26 @@ export async function ingestCourse(
   }
   console.log(`[ingest:${courseId}] ✓ rawText length=${course.rawText.length} chars`);
 
+  const systemPrompt = buildSystemPrompt(course.educationLevel ?? null, language);
   const userMessage = buildUserMessage(course.rawText, course.examDate);
   let plan: Plan | null = null;
   let lastError = "";
 
-  // ── PRO: Claude first ────────────────────────────────────────────────────
-  if (userPlan === "PRO") {
-    if (!ANTHROPIC_API_KEY) {
-      console.warn(`[ingest:${courseId}] ⚠ PRO user but ANTHROPIC_API_KEY not set — falling through to free LLMs`);
-      lastError = "ANTHROPIC_API_KEY not configured on server";
-    } else {
-      const primaryModel = MODEL_MAP[modelChoice] ?? MODEL_MAP.haiku;
-      console.log(`[ingest:${courseId}] ▶ [PRO] Calling Claude — model=${primaryModel}`);
-      try {
-        plan = await callClaude(primaryModel, userMessage);
-        console.log(`[ingest:${courseId}] ✓ Claude responded — topics=${plan.topics.length}`);
-      } catch (err) {
-        lastError = err instanceof Error ? err.message : String(err);
-        console.error(`[ingest:${courseId}] ✗ Claude (${primaryModel}) failed: ${lastError}`);
-
-        // Try sonnet fallback only for non-billing errors
-        if (!lastError.includes("credit balance is too low")) {
-          console.log(`[ingest:${courseId}] ▶ [PRO] Fallback → ${FALLBACK_MODEL}`);
-          try {
-            plan = await callClaude(FALLBACK_MODEL, userMessage);
-            console.log(`[ingest:${courseId}] ✓ Claude fallback responded — topics=${plan.topics.length}`);
-          } catch (fallbackErr) {
-            lastError = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-            console.error(`[ingest:${courseId}] ✗ Claude fallback also failed: ${lastError}`);
-          }
-        } else {
-          console.warn(`[ingest:${courseId}] ⚠ Anthropic credit exhausted — falling through to free LLMs`);
-        }
-      }
-    }
+  if (!FREELLMAPI_URL || !FREELLMAPI_KEY) {
+    lastError = "FreeLLMAPI not configured (FREELLMAPI_URL / FREELLMAPI_KEY missing)";
+    console.warn(`[ingest:${courseId}] ⚠ ${lastError}`);
   } else {
-    console.log(`[ingest:${courseId}] ▶ [FREE] Skipping Claude — using free LLMs only`);
-  }
-
-  // ── FREE (always) / PRO fallback: FreeLLMAPI ─────────────────────────────
-  if (!plan) {
-    if (!FREELLMAPI_URL || !FREELLMAPI_KEY) {
-      console.warn(`[ingest:${courseId}] ⚠ FreeLLMAPI not configured`);
-      lastError = lastError || "FreeLLMAPI not configured (FREELLMAPI_URL / FREELLMAPI_KEY missing)";
-    } else {
-      // Use the model the user picked if it's a free-tier model ID;
-      // fall back to the env-var default when it's a Claude model name (PRO fallback path).
-      const freeLLMModel = MODEL_MAP[modelChoice]
-        ? (FREELLMAPI_MODEL || "auto")   // PRO fallback — Claude model name, use env default
-        : (modelChoice || "auto");       // FREE user — use their chosen model ID
-      console.log(`[ingest:${courseId}] ▶ Calling FreeLLMAPI — model=${freeLLMModel}`);
-      try {
-        plan = await callFreeLLMAPI(userMessage, freeLLMModel);
-        console.log(`[ingest:${courseId}] ✓ FreeLLMAPI responded — topics=${plan.topics.length}`);
-      } catch (freeErr) {
-        lastError = freeErr instanceof Error ? freeErr.message : String(freeErr);
-        console.error(`[ingest:${courseId}] ✗ FreeLLMAPI failed: ${lastError}`);
-      }
+    const freeLLMModel = modelChoice || "auto";
+    console.log(`[ingest:${courseId}] ▶ Calling FreeLLMAPI — model=${freeLLMModel}`);
+    try {
+      plan = await callFreeLLMAPI(userMessage, freeLLMModel, systemPrompt);
+      console.log(`[ingest:${courseId}] ✓ FreeLLMAPI responded — topics=${plan.topics.length}`);
+    } catch (freeErr) {
+      lastError = freeErr instanceof Error ? freeErr.message : String(freeErr);
+      console.error(`[ingest:${courseId}] ✗ FreeLLMAPI failed: ${lastError}`);
     }
   }
 
-  // ── Result ───────────────────────────────────────────────────────────────
   if (!plan) {
     await markFailed(courseId, lastError || "All LLM providers failed.");
     return;
@@ -272,65 +240,10 @@ async function writePlan(courseId: string, plan: Plan): Promise<void> {
   });
 }
 
-async function callClaude(model: string, userMessage: string): Promise<Plan> {
-  const https = await import("node:https");
-
-  const body = JSON.stringify({
-    model,
-    max_tokens: MAX_TOKENS,
-    temperature: TEMPERATURE,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userMessage }],
-    tools: [STUDY_PLAN_TOOL],
-    tool_choice: { type: "tool", name: "study_plan" },
-  });
-
-  const text = await new Promise<string>((resolve, reject) => {
-    const req = https.request(
-      {
-        hostname: "api.anthropic.com",
-        path: "/v1/messages",
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        timeout: TIMEOUT_MS,
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
-        res.on("end", () => {
-          const raw = Buffer.concat(chunks).toString("utf-8");
-          if (res.statusCode !== 200) {
-            reject(new Error(`Anthropic API ${res.statusCode}: ${raw}`));
-            return;
-          }
-          resolve(raw);
-        });
-      }
-    );
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("Anthropic API timeout")); });
-    req.write(body);
-    req.end();
-  });
-
-  const data = JSON.parse(text);
-  const toolBlock = data.content?.find((b: { type: string }) => b.type === "tool_use");
-  if (!toolBlock?.input) {
-    throw new Error("Claude did not return a tool_use block");
-  }
-  return toolBlock.input as Plan;
-}
-
 /**
  * Calls the FreeLLMAPI OpenAI-compatible endpoint with JSON-mode output.
- * FreeLLMAPI doesn't support tool_use, so we ask the model to return raw JSON
- * matching the Plan schema and parse it ourselves.
  */
-async function callFreeLLMAPI(userMessage: string, modelId: string = FREELLMAPI_MODEL): Promise<Plan> {
+async function callFreeLLMAPI(userMessage: string, modelId: string = FREELLMAPI_MODEL, systemPrompt: string = SYSTEM_PROMPT): Promise<Plan> {
   const url = new URL(`${FREELLMAPI_URL}/v1/chat/completions`);
   const transport = url.protocol === "https:" ? await import("node:https") : await import("node:http");
 
@@ -360,7 +273,7 @@ async function callFreeLLMAPI(userMessage: string, modelId: string = FREELLMAPI_
     messages: [
       {
         role: "system",
-        content: `${SYSTEM_PROMPT}\n\nIMPORTANT: Instead of calling a tool, return ONLY valid JSON matching this exact schema (no markdown, no explanation):\n${jsonSchema}`,
+        content: `${systemPrompt}\n\nIMPORTANT: Instead of calling a tool, return ONLY valid JSON matching this exact schema (no markdown, no explanation):\n${jsonSchema}`,
       },
       { role: "user", content: userMessage },
     ],

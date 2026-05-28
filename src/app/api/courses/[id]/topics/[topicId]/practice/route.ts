@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import Anthropic from "@anthropic-ai/sdk";
+import { freeLLMComplete } from "@/lib/freellm";
 import { z } from "zod";
 
-const MODEL = "claude-sonnet-4-5";
 const TEMPERATURE = 0.3;
-const TIMEOUT_MS = 30_000;
 
-// §6.2 exact system prompt
 function buildSystemPrompt(courseName: string): string {
   return `You are grading a student's practice answer for ${courseName}.
 The question, the expected answer, the relevant rubric (if present), and the
@@ -89,41 +86,28 @@ Source: ${question.source}
 
 Student's answer: ${body.answer}`;
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   let raw: string;
   try {
-    const response = await client.messages.create(
-      {
-        model: MODEL,
-        max_tokens: 1024,
-        temperature: TEMPERATURE,
-        system: buildSystemPrompt(course.name),
-        messages: [{ role: "user", content: userMessage }],
-      },
-      { signal: controller.signal }
+    raw = await freeLLMComplete(
+      [
+        { role: "system", content: buildSystemPrompt(course.name) },
+        { role: "user", content: userMessage },
+      ],
+      { temperature: TEMPERATURE, jsonMode: true }
     );
-    const block = response.content[0];
-    if (block.type !== "text") throw new Error("Unexpected content type");
-    raw = block.text;
   } catch (err) {
-    clearTimeout(timer);
     const msg = err instanceof Error ? err.message : "LLM error";
     return NextResponse.json({ error: msg }, { status: 502 });
-  } finally {
-    clearTimeout(timer);
   }
 
   let grade: z.infer<typeof GradeSchema>;
   try {
-    grade = GradeSchema.parse(JSON.parse(raw));
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    grade = GradeSchema.parse(JSON.parse(cleaned));
   } catch {
     return NextResponse.json({ error: "Grading response was malformed" }, { status: 502 });
   }
 
-  // Persist attempt
   await prisma.practiceAttempt.create({
     data: {
       topicId,

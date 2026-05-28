@@ -14,6 +14,7 @@ model User {
   image     String?
   password  String?   @db.Text
   plan                 UserPlan  @default(FREE)
+  preferredLanguage    String?
   stripeCustomerId     String?   @unique
   stripeSubscriptionId String?   @unique
   proAccessEndsAt      DateTime?
@@ -69,6 +70,7 @@ model Course {
   user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                 String
   code                 String?
+  educationLevel       String?
   examDate             DateTime?
   status               CourseStatus  @default(PROCESSING)
   rawText              String?       @db.Text
@@ -168,4 +170,22 @@ model PracticeAttempt {
   verdict       String
   feedback      String   @db.Text
   createdAt     DateTime @default(now())
+}
+
+model LlmModel {
+  id        String    @id @default(cuid())
+  modelId   String    @unique
+  label     String
+  desc      String
+  provider  String
+  tier      ModelTier @default(FREE)
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum ModelTier {
+  FREE
+  PRO
 }

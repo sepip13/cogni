@@ -63,10 +63,10 @@ export async function POST(req: NextRequest) {
 
   if (
     typeof durationDays !== "number" ||
-    ![3, 5, 10].includes(durationDays)
+    ![3, 5, 10, 30].includes(durationDays)
   ) {
     return NextResponse.json(
-      { error: "durationDays must be 3, 5, or 10" },
+      { error: "durationDays must be 3, 5, 10, or 30" },
       { status: 400 }
     );
   }
