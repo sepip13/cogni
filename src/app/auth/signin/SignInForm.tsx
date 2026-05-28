@@ -1,10 +1,10 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "verify";
 
 const inputStyle: React.CSSProperties = {
   padding: "10px 14px",
@@ -36,12 +36,42 @@ export function SignInForm() {
   const [email, setEmail]         = useState("");
   const [password, setPassword]   = useState("");
   const [name, setName]           = useState("");
+  const [code, setCode]           = useState(["", "", "", "", "", ""]);
   const [error, setError]         = useState("");
+  const [info, setInfo]           = useState("");
   const [isPending, startTransition] = useTransition();
+  const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   function switchMode(next: Mode) {
     setMode(next);
     setError("");
+    setInfo("");
+  }
+
+  function handleCodeChange(index: number, value: string) {
+    if (!/^\d*$/.test(value)) return;
+    const next = [...code];
+    next[index] = value.slice(-1);
+    setCode(next);
+    setError("");
+    if (value && index < 5) {
+      codeRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleCodeKeyDown(index: number, e: React.KeyboardEvent) {
+    if (e.key === "Backspace" && !code[index] && index > 0) {
+      codeRefs.current[index - 1]?.focus();
+    }
+  }
+
+  function handleCodePaste(e: React.ClipboardEvent) {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (pasted.length === 6) {
+      setCode(pasted.split(""));
+      codeRefs.current[5]?.focus();
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -66,16 +96,22 @@ export function SignInForm() {
           body: JSON.stringify({ email: trimmedEmail, password, name: name.trim() || undefined }),
         });
 
+        const data = await res.json().catch(() => ({}));
+
         if (res.status === 409) {
           setError("Email already registered. Sign in instead.");
           return;
         }
         if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          setError(body.error ?? "Sign up failed. Please try again.");
+          setError(data.error ?? "Sign up failed. Please try again.");
           return;
         }
-        // Account created — now sign in automatically
+
+        if (data.needsVerification) {
+          setMode("verify");
+          setInfo("We sent a 6-digit code to " + trimmedEmail);
+          return;
+        }
       }
 
       const result = await signIn("credentials", {
@@ -93,6 +129,154 @@ export function SignInForm() {
     });
   }
 
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    const fullCode = code.join("");
+    if (fullCode.length !== 6) {
+      setError("Enter the 6-digit code.");
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), code: fullCode }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data.error ?? "Verification failed.");
+        return;
+      }
+
+      const result = await signIn("credentials", {
+        email: email.trim().toLowerCase(),
+        password,
+        callbackUrl,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError("Verified! But sign-in failed. Try signing in manually.");
+        setMode("signin");
+      } else {
+        window.location.href = callbackUrl;
+      }
+    });
+  }
+
+  async function handleResendCode() {
+    setError("");
+    setInfo("");
+    startTransition(async () => {
+      await fetch("/api/auth/resend-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      setInfo("New code sent!");
+      setCode(["", "", "", "", "", ""]);
+      codeRefs.current[0]?.focus();
+    });
+  }
+
+  // ── Verification screen ──────────────────────────────────────────────────
+  if (mode === "verify") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>&#9993;</div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Check your email</h2>
+          <p style={{ fontSize: 13, color: "var(--text-dim)" }}>{info}</p>
+        </div>
+
+        {error && (
+          <div role="alert" style={{ background: "rgba(255, 107, 107, 0.1)", border: "1px solid rgba(255, 107, 107, 0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "var(--high)" }}>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleVerify} noValidate>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 20 }}>
+            {code.map((digit, i) => (
+              <input
+                key={i}
+                ref={(el) => { codeRefs.current[i] = el; }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handleCodeChange(i, e.target.value)}
+                onKeyDown={(e) => handleCodeKeyDown(i, e)}
+                onPaste={i === 0 ? handleCodePaste : undefined}
+                disabled={isPending}
+                style={{
+                  width: 44,
+                  height: 52,
+                  textAlign: "center",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  background: "var(--surface-2)",
+                  border: digit ? "2px solid var(--accent)" : "1px solid var(--border-strong)",
+                  borderRadius: 10,
+                  color: "var(--text)",
+                  outline: "none",
+                  fontFamily: "inherit",
+                  transition: "border-color var(--duration-fast)",
+                }}
+                autoFocus={i === 0}
+              />
+            ))}
+          </div>
+
+          <button
+            type="submit"
+            disabled={isPending || code.join("").length !== 6}
+            style={{
+              width: "100%",
+              padding: "12px 20px",
+              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+              color: "var(--bg)",
+              border: "none",
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: isPending ? "default" : "pointer",
+              opacity: isPending || code.join("").length !== 6 ? 0.5 : 1,
+              transition: "opacity var(--duration-fast)",
+            }}
+          >
+            {isPending ? "Verifying..." : "Verify & Sign in"}
+          </button>
+        </form>
+
+        <div style={{ textAlign: "center" }}>
+          <button
+            type="button"
+            onClick={handleResendCode}
+            disabled={isPending}
+            style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0 }}
+          >
+            Resend code
+          </button>
+          <span style={{ color: "var(--text-faint)", margin: "0 8px" }}>|</span>
+          <button
+            type="button"
+            onClick={() => switchMode("signup")}
+            style={{ background: "none", border: "none", color: "var(--text-dim)", fontSize: 13, cursor: "pointer", padding: 0 }}
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Sign in / Sign up screen ─────────────────────────────────────────────
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
@@ -144,7 +328,7 @@ export function SignInForm() {
           gap: 4,
         }}
       >
-        {(["signin", "signup"] as Mode[]).map((m) => (
+        {(["signin", "signup"] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -256,7 +440,7 @@ export function SignInForm() {
             aria-busy={isPending}
           >
             {isPending
-              ? (mode === "signup" ? "Creating account…" : "Signing in…")
+              ? (mode === "signup" ? "Creating account..." : "Signing in...")
               : (mode === "signup" ? "Create account" : "Sign in")}
           </button>
         </div>

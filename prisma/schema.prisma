@@ -13,6 +13,7 @@ model User {
   name      String?
   image     String?
   password  String?   @db.Text
+  emailVerified        DateTime?
   plan                 UserPlan  @default(FREE)
   preferredLanguage    String?
   stripeCustomerId     String?   @unique
