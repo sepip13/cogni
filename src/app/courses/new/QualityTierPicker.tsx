@@ -50,6 +50,9 @@ function computeWizardRecommendation(answers: Record<string, string>): { tier: Q
   if (priority === "depth" && urgency !== "1to3days") {
     return { tier: "maximum", reason: "You have time and want depth — Maximum will extract the most insight." };
   }
+  if (urgency === "noexam") {
+    return { tier: "balanced", reason: "No deadline pressure — Balanced gives you a solid study plan at a good pace." };
+  }
   return { tier: "balanced", reason: "Balanced covers your materials thoroughly without unnecessary wait." };
 }
 
@@ -197,7 +200,7 @@ export function QualityTierPicker({
           </div>
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>When is your exam?</div>
-            <WizardRadio groupKey="urgency" options={[{ value: "1to3days", label: "In 1–3 days" }, { value: "1to2weeks", label: "In 1–2 weeks" }, { value: "2plusweeks", label: "More than 2 weeks" }]} />
+            <WizardRadio groupKey="urgency" options={[{ value: "1to3days", label: "In 1–3 days" }, { value: "1to2weeks", label: "In 1–2 weeks" }, { value: "2plusweeks", label: "More than 2 weeks" }, { value: "noexam", label: "No exam — just studying" }]} />
           </div>
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>What matters most?</div>
