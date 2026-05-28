@@ -78,7 +78,7 @@ interface Analytics {
   signupsByDay: { day: string; count: number }[];
 }
 
-type TabId = "overview" | "users" | "courses" | "codes" | "models";
+type TabId = "overview" | "users" | "courses" | "codes" | "models" | "questions";
 
 // ── Shared UI pieces ──────────────────────────────────────────────────────────
 
@@ -1448,12 +1448,383 @@ function ModelsTab() {
   );
 }
 
+// ── Questions tab ────────────────────────────────────────────────────────────
+
+interface PracticeQuestion {
+  q: string;
+  source: string;
+  expected_answer: string;
+}
+
+interface QuestionTopic {
+  id: string;
+  num: string;
+  title: string;
+  priority: "HIGH" | "MED" | "LOW";
+  practiceQuestions: PracticeQuestion[];
+}
+
+interface QuestionCourse {
+  id: string;
+  name: string;
+  code: string | null;
+  createdAt: string;
+  user: { email: string; name: string | null };
+  topics: QuestionTopic[];
+}
+
+interface Attempt {
+  id: string;
+  topicId: string;
+  userId: string;
+  questionIndex: number;
+  userAnswer: string;
+  score: number;
+  verdict: string;
+  feedback: string;
+  createdAt: string;
+}
+
+function QuestionsTab() {
+  const [courses, setCourses] = useState<QuestionCourse[] | null>(null);
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedCourse, setExpandedCourse] = useState<string | null>(null);
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<"ALL" | "HIGH" | "MED" | "LOW">("ALL");
+
+  useEffect(() => {
+    fetch("/api/admin/questions")
+      .then((r) => (r.ok ? r.json() : { courses: [], attempts: [] }))
+      .then((data: { courses: QuestionCourse[]; attempts: Attempt[] }) => {
+        setCourses(data.courses);
+        setAttempts(data.attempts);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <p style={{ fontSize: 13, color: "var(--text-dim)" }}>Loading questions...</p>;
+  }
+
+  const all = courses ?? [];
+
+  const totalQuestions = all.reduce(
+    (sum, c) => sum + c.topics.reduce((ts, t) => ts + t.practiceQuestions.length, 0),
+    0
+  );
+  const totalTopics = all.reduce((sum, c) => sum + c.topics.length, 0);
+  const avgScore =
+    attempts.length > 0
+      ? Math.round(attempts.reduce((s, a) => s + a.score, 0) / attempts.length)
+      : 0;
+
+  const filtered = all.filter((c) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.code ?? "").toLowerCase().includes(q) ||
+      c.user.email.toLowerCase().includes(q) ||
+      c.topics.some(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.practiceQuestions.some((pq) => pq.q.toLowerCase().includes(q))
+      )
+    );
+  });
+
+  const attemptsByTopic = attempts.reduce<Record<string, Attempt[]>>((acc, a) => {
+    const arr = acc[a.topicId] ?? [];
+    return { ...acc, [a.topicId]: [...arr, a] };
+  }, {});
+
+  const priorityColor: Record<string, string> = {
+    HIGH: "var(--high)",
+    MED: "var(--med)",
+    LOW: "var(--success)",
+  };
+
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
+        <StatCard label="Courses with Qs" value={all.length} />
+        <StatCard label="Total Topics" value={totalTopics} />
+        <StatCard label="Total Questions" value={totalQuestions} accent />
+        <StatCard label="Practice Attempts" value={attempts.length} />
+        <StatCard label="Avg Score" value={`${avgScore}%`} color={avgScore >= 70 ? "var(--success)" : "var(--high)"} />
+      </div>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search courses, topics, questions..." />
+        <div style={{ display: "flex", gap: 6 }}>
+          <FilterPill label="All" active={priorityFilter === "ALL"} onClick={() => setPriorityFilter("ALL")} />
+          <FilterPill label="High" active={priorityFilter === "HIGH"} onClick={() => setPriorityFilter("HIGH")} />
+          <FilterPill label="Med" active={priorityFilter === "MED"} onClick={() => setPriorityFilter("MED")} />
+          <FilterPill label="Low" active={priorityFilter === "LOW"} onClick={() => setPriorityFilter("LOW")} />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState message={search ? "No matches found." : "No courses with questions yet."} />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {filtered.map((course) => {
+            const isOpen = expandedCourse === course.id;
+            const courseQCount = course.topics.reduce((s, t) => s + t.practiceQuestions.length, 0);
+            const visibleTopics =
+              priorityFilter === "ALL"
+                ? course.topics
+                : course.topics.filter((t) => t.priority === priorityFilter);
+
+            if (priorityFilter !== "ALL" && visibleTopics.length === 0) return null;
+
+            return (
+              <div
+                key={course.id}
+                style={{
+                  background: "var(--surface)",
+                  border: `1px solid ${isOpen ? "var(--accent)" : "var(--border-strong)"}`,
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  transition: "border-color 0.15s",
+                }}
+              >
+                <button
+                  onClick={() => setExpandedCourse(isOpen ? null : course.id)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "16px 20px",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
+                      {course.name}
+                      {course.code && (
+                        <span style={{ fontSize: 12, color: "var(--text-faint)", marginLeft: 8 }}>
+                          {course.code}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 4 }}>
+                      {course.user.name ?? course.user.email} — {formatDate(course.createdAt)}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <span style={{ fontSize: 12, color: "var(--text-dim)", fontWeight: 600 }}>
+                      {course.topics.length} topics — {courseQCount} questions
+                    </span>
+                    <span style={{ fontSize: 16, color: "var(--text-faint)", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+                      ▸
+                    </span>
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div style={{ padding: "0 20px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {visibleTopics.map((topic) => {
+                      const topicOpen = expandedTopic === topic.id;
+                      const topicAttempts = attemptsByTopic[topic.id] ?? [];
+
+                      return (
+                        <div
+                          key={topic.id}
+                          style={{
+                            background: "var(--bg-2)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 12,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <button
+                            onClick={() => setExpandedTopic(topicOpen ? null : topic.id)}
+                            style={{
+                              width: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              padding: "12px 16px",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: "50%",
+                                  background: priorityColor[topic.priority] ?? "var(--text-faint)",
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
+                                {topic.num}. {topic.title}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  color: priorityColor[topic.priority],
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.06em",
+                                }}
+                              >
+                                {topic.priority}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <span style={{ fontSize: 12, color: "var(--text-faint)" }}>
+                                {topic.practiceQuestions.length} Qs
+                                {topicAttempts.length > 0 && ` — ${topicAttempts.length} attempts`}
+                              </span>
+                              <span style={{ fontSize: 14, color: "var(--text-faint)", transform: topicOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+                                ▸
+                              </span>
+                            </div>
+                          </button>
+
+                          {topicOpen && (
+                            <div style={{ padding: "0 16px 16px" }}>
+                              {topic.practiceQuestions.length === 0 ? (
+                                <p style={{ fontSize: 12, color: "var(--text-faint)", padding: "8px 0" }}>
+                                  No questions generated for this topic.
+                                </p>
+                              ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                  {topic.practiceQuestions.map((pq, i) => {
+                                    const qAttempts = topicAttempts.filter((a) => a.questionIndex === i);
+
+                                    return (
+                                      <div
+                                        key={i}
+                                        style={{
+                                          background: "var(--surface)",
+                                          border: "1px solid var(--border)",
+                                          borderRadius: 10,
+                                          padding: "14px 16px",
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                                          <span
+                                            style={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                              width: 22,
+                                              height: 22,
+                                              borderRadius: "50%",
+                                              background: "var(--accent-soft)",
+                                              color: "var(--accent)",
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              flexShrink: 0,
+                                            }}
+                                          >
+                                            {i + 1}
+                                          </span>
+                                          <span style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
+                                            {pq.q}
+                                          </span>
+                                        </div>
+
+                                        <div style={{ fontSize: 12, color: "var(--text-dim)", marginLeft: 30, marginBottom: 4 }}>
+                                          <strong style={{ color: "var(--text-faint)", fontWeight: 600 }}>Expected:</strong>{" "}
+                                          {pq.expected_answer}
+                                        </div>
+
+                                        {pq.source && (
+                                          <div style={{ fontSize: 11, color: "var(--text-faint)", marginLeft: 30 }}>
+                                            Source: {pq.source}
+                                          </div>
+                                        )}
+
+                                        {qAttempts.length > 0 && (
+                                          <div style={{ marginTop: 10, marginLeft: 30, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                                            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                                              Student Attempts ({qAttempts.length})
+                                            </div>
+                                            {qAttempts.map((a) => (
+                                              <div
+                                                key={a.id}
+                                                style={{
+                                                  padding: "8px 12px",
+                                                  background: "var(--bg-2)",
+                                                  borderRadius: 8,
+                                                  marginBottom: 6,
+                                                  border: "1px solid var(--border)",
+                                                }}
+                                              >
+                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                                  <span
+                                                    style={{
+                                                      fontSize: 11,
+                                                      fontWeight: 700,
+                                                      padding: "2px 8px",
+                                                      borderRadius: 12,
+                                                      background: a.score >= 70 ? "rgba(52,211,153,0.12)" : "rgba(255,107,107,0.12)",
+                                                      color: a.score >= 70 ? "var(--success)" : "var(--high)",
+                                                    }}
+                                                  >
+                                                    {a.score}% — {a.verdict}
+                                                  </span>
+                                                  <span style={{ fontSize: 11, color: "var(--text-faint)" }}>
+                                                    {formatRelative(a.createdAt)}
+                                                  </span>
+                                                </div>
+                                                <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 2 }}>
+                                                  <strong style={{ fontWeight: 600, color: "var(--text-faint)" }}>Answer:</strong> {a.userAnswer}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
+                                                  {a.feedback}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <p style={{ marginTop: 12, fontSize: 12, color: "var(--text-faint)", textAlign: "right" }}>
+        {filtered.length} courses — {totalQuestions} questions — {attempts.length} attempts
+      </p>
+    </>
+  );
+}
+
 // ── Root AdminPanel ───────────────────────────────────────────────────────────
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "overview", label: "Overview", icon: "◐" },
   { id: "users", label: "Users", icon: "◉" },
   { id: "courses", label: "Courses", icon: "▦" },
+  { id: "questions", label: "Questions", icon: "?" },
   { id: "codes", label: "Access Codes", icon: "⚿" },
   { id: "models", label: "AI Models", icon: "◈" },
 ];
@@ -1503,6 +1874,7 @@ export function AdminPanel({ initialUsers }: { initialUsers: User[] }) {
       {activeTab === "overview" && <OverviewTab users={initialUsers} />}
       {activeTab === "users" && <UsersTab initialUsers={initialUsers} />}
       {activeTab === "courses" && <CoursesTab />}
+      {activeTab === "questions" && <QuestionsTab />}
       {activeTab === "codes" && <CodesTab />}
       {activeTab === "models" && <ModelsTab />}
     </div>
