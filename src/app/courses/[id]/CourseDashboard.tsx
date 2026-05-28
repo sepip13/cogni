@@ -10,10 +10,12 @@ import type { CourseData } from "./types";
 
 function FailedView({
   name,
+  fileNames,
   onRetry,
   retrying,
 }: {
   name?: string;
+  fileNames?: string[];
   onRetry: () => void;
   retrying: boolean;
 }) {
@@ -38,11 +40,59 @@ function FailedView({
       >
         Ingestion failed
       </h1>
-      <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 28 }}>
+      <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 16 }}>
         Something went wrong while building the study plan for{" "}
-        <strong>{name}</strong>. This can happen with very large or unusual
-        files. You can try again — Cogni will re-run the full analysis.
+        <strong>{name}</strong>. You can try again — Cogni will re-run the full analysis.
       </p>
+
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          padding: "16px 20px",
+          textAlign: "left",
+          marginBottom: 20,
+          fontSize: 13,
+          color: "var(--text-dim)",
+          lineHeight: 1.6,
+        }}
+      >
+        <div style={{ fontWeight: 700, color: "var(--text)", marginBottom: 8, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          Common causes
+        </div>
+        <ul style={{ paddingLeft: 18, margin: 0 }}>
+          <li>Files too large or heavily formatted</li>
+          <li>Unsupported format or scanned images without OCR</li>
+          <li>AI service temporarily unavailable</li>
+        </ul>
+        <div style={{ marginTop: 12, fontWeight: 600, color: "var(--text)" }}>
+          Try uploading fewer files or shorter documents.
+        </div>
+      </div>
+
+      {fileNames && fileNames.length > 0 && (
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            padding: "12px 16px",
+            textAlign: "left",
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+            Uploaded files
+          </div>
+          {fileNames.map((fn, i) => (
+            <div key={i} style={{ fontSize: 13, color: "var(--text-dim)", padding: "3px 0" }}>
+              {fn}
+            </div>
+          ))}
+        </div>
+      )}
+
       <button
         onClick={onRetry}
         disabled={retrying}
@@ -51,7 +101,7 @@ function FailedView({
           background: retrying
             ? "var(--surface-2)"
             : "linear-gradient(135deg, var(--accent), var(--accent-2))",
-          color: retrying ? "var(--text-dim)" : "#0a0e1a",
+          color: retrying ? "var(--text-dim)" : "var(--bg)",
           borderRadius: 10,
           fontWeight: 700,
           fontSize: 14,
@@ -189,6 +239,7 @@ export function CourseDashboard({ courseId }: { courseId: string }) {
     return (
       <FailedView
         name={course.name}
+        fileNames={course.files?.map((f) => f.fileName)}
         onRetry={handleRetry}
         retrying={retrying}
       />

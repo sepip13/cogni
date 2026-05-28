@@ -19,4 +19,5 @@ export interface CourseData {
   status: "PROCESSING" | "READY" | "FAILED";
   totalPrepTimeMinutes: number | null;
   topics: TopicRow[];
+  files?: { fileName: string }[];
 }

@@ -162,8 +162,9 @@ export function ReadyView({ course }: { course: CourseData }) {
           >
             Ask Cogni
           </Link>
-          <Link
-            href={`/courses/${course.id}/export`}
+          <a
+            href={`/api/courses/${course.id}/export`}
+            download
             style={{
               padding: "9px 18px",
               background: "var(--surface-2)",
@@ -174,15 +175,18 @@ export function ReadyView({ course }: { course: CourseData }) {
               color: "var(--text)",
               transition: "border-color 0.15s",
               whiteSpace: "nowrap",
+              textDecoration: "none",
+              display: "inline-block",
             }}
           >
             Export PDF
-          </Link>
+          </a>
         </div>
       </div>
 
       {/* KPI grid — auto-fill collapses to 2×2 on mobile, 4×1 on desktop */}
       <div
+        className="fade-up-stagger"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
@@ -361,18 +365,7 @@ export function ReadyView({ course }: { course: CourseData }) {
               textDecoration: "none",
               color: "inherit",
             }}
-            onMouseEnter={(e) => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.borderColor = "var(--accent)";
-              el.style.background = "var(--surface-2)";
-            }}
-            onMouseLeave={(e) => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.borderColor = topic.studied
-                ? "rgba(52,211,153,0.25)"
-                : "var(--border)";
-              el.style.background = "var(--surface)";
-            }}
+            className="hover-card"
           >
             <span
               style={{

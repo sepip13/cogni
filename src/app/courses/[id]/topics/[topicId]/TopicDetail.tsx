@@ -74,6 +74,7 @@ export function TopicDetail({
   const [courseName, setCourseName] = useState("");
   const [error, setError] = useState(false);
   const [togglingStudied, setTogglingStudied] = useState(false);
+  const [checkedSubtopics, setCheckedSubtopics] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetch(`/api/courses/${courseId}/topics/${topicId}`)
@@ -250,6 +251,7 @@ export function TopicDetail({
       </div>
 
       <div
+        className="topic-detail-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 300px",
@@ -285,7 +287,9 @@ export function TopicDetail({
                 Subtopics
               </h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {topic.subtopics.map((st, i) => (
+                {topic.subtopics.map((st, i) => {
+                  const checked = checkedSubtopics.has(i);
+                  return (
                   <div
                     key={i}
                     style={{
@@ -296,6 +300,27 @@ export function TopicDetail({
                       background: "var(--surface-2)",
                       borderRadius: 8,
                       fontSize: 14,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => {
+                      setCheckedSubtopics((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i); else next.add(i);
+                        return next;
+                      });
+                    }}
+                    role="checkbox"
+                    aria-checked={checked}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === " " || e.key === "Enter") {
+                        e.preventDefault();
+                        setCheckedSubtopics((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i); else next.add(i);
+                          return next;
+                        });
+                      }
                     }}
                   >
                     <div
@@ -303,12 +328,19 @@ export function TopicDetail({
                         width: 18,
                         height: 18,
                         borderRadius: 4,
-                        border: "1.5px solid var(--border-strong)",
+                        border: checked ? "none" : "1.5px solid var(--border-strong)",
+                        background: checked ? "var(--accent)" : "transparent",
                         flexShrink: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all var(--duration-fast)",
                       }}
                       aria-hidden="true"
-                    />
-                    <span style={{ flex: 1 }}>{st.text}</span>
+                    >
+                      {checked && <span style={{ color: "var(--bg)", fontSize: 12, fontWeight: 700 }}>✓</span>}
+                    </div>
+                    <span style={{ flex: 1, textDecoration: checked ? "line-through" : "none", opacity: checked ? 0.6 : 1 }}>{st.text}</span>
                     <span
                       style={{
                         fontFamily: "var(--font-jetbrains), monospace",
@@ -319,7 +351,8 @@ export function TopicDetail({
                       {st.time_minutes}m
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
@@ -504,12 +537,7 @@ export function TopicDetail({
                           transition: "border-color 0.15s",
                           textDecoration: "none",
                         }}
-                        onMouseEnter={(e) => {
-                          (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
-                        }}
-                        onMouseLeave={(e) => {
-                          (e.currentTarget as HTMLElement).style.borderColor = "transparent";
-                        }}
+                        className="hover-accent-border"
                       >
                         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {src.name}

@@ -16,6 +16,7 @@ model User {
   emailVerified        DateTime?
   plan                 UserPlan  @default(FREE)
   preferredLanguage    String?
+  preferredQualityTier String?   @default("balanced")
   stripeCustomerId     String?   @unique
   stripeSubscriptionId String?   @unique
   proAccessEndsAt      DateTime?

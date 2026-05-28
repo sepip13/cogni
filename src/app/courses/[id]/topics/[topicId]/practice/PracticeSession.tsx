@@ -49,6 +49,8 @@ export function PracticeSession({
   const [answer, setAnswer] = useState("");
   const [grading, setGrading] = useState(false);
   const [result, setResult] = useState<GradeResult | null>(null);
+  const [allResults, setAllResults] = useState<(GradeResult | null)[]>([]);
+  const [sessionComplete, setSessionComplete] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState(false);
 
@@ -83,7 +85,13 @@ export function PracticeSession({
         setError(body.error ?? "Grading failed. Please try again.");
         return;
       }
-      setResult(await res.json());
+      const gradeResult = await res.json();
+      setResult(gradeResult);
+      setAllResults((prev) => {
+        const next = [...prev];
+        next[current] = gradeResult;
+        return next;
+      });
     } catch {
       setError("Network error — please try again.");
     } finally {
@@ -92,10 +100,23 @@ export function PracticeSession({
   }
 
   function nextQuestion() {
+    if (current + 1 >= questions.length) {
+      setSessionComplete(true);
+      return;
+    }
     setResult(null);
     setAnswer("");
     setError("");
-    setCurrent((c) => (c + 1) % questions.length);
+    setCurrent((c) => c + 1);
+  }
+
+  function restartSession() {
+    setCurrent(0);
+    setAnswer("");
+    setResult(null);
+    setAllResults([]);
+    setSessionComplete(false);
+    setError("");
   }
 
   if (loadError) {
@@ -113,6 +134,102 @@ export function PracticeSession({
     return (
       <div style={{ paddingTop: 40 }} aria-busy="true">
         <div className="skeleton" style={{ height: 200, borderRadius: 16 }} />
+      </div>
+    );
+  }
+
+  if (sessionComplete) {
+    const answered = allResults.filter((r): r is GradeResult => r !== null);
+    const avgScore = answered.length > 0 ? Math.round(answered.reduce((s, r) => s + r.score, 0) / answered.length) : 0;
+    const correctCount = answered.filter((r) => r.verdict === "correct").length;
+    const partialCount = answered.filter((r) => r.verdict === "partially_correct").length;
+    const incorrectCount = answered.filter((r) => r.verdict === "incorrect").length;
+
+    return (
+      <div className="fade-in" style={{ maxWidth: 720, margin: "0 auto" }}>
+        <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-dim)", marginBottom: 24 }}>
+          <Link href="/dashboard" style={{ color: "var(--text-dim)" }}>My courses</Link>
+          <span aria-hidden="true" style={{ color: "var(--text-faint)" }}>›</span>
+          <Link href={`/courses/${courseId}`} style={{ color: "var(--text-dim)" }}>{courseName}</Link>
+          <span aria-hidden="true" style={{ color: "var(--text-faint)" }}>›</span>
+          <Link href={`/courses/${courseId}/topics/${topicId}`} style={{ color: "var(--text-dim)" }}>{topicTitle}</Link>
+          <span aria-hidden="true" style={{ color: "var(--text-faint)" }}>›</span>
+          <span style={{ color: "var(--text)" }} aria-current="page">Practice</span>
+        </nav>
+
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 32, textAlign: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 6, letterSpacing: "-0.02em" }}>
+            Session complete
+          </div>
+          <div style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 28 }}>
+            You answered all {questions.length} questions
+          </div>
+
+          <div
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: "50%",
+              border: `3px solid ${scoreColor(avgScore)}`,
+              display: "inline-flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 24,
+            }}
+          >
+            <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor(avgScore) }}>{avgScore}</span>
+            <span style={{ fontSize: 11, color: "var(--text-faint)" }}>avg</span>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 28 }}>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--success)" }}>{correctCount}</div>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Correct</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--med)" }}>{partialCount}</div>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Partial</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--high)" }}>{incorrectCount}</div>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Incorrect</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <button
+              onClick={restartSession}
+              style={{
+                padding: "12px 24px",
+                background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+                color: "var(--bg)",
+                border: "none",
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              Practice again
+            </button>
+            <Link
+              href={`/courses/${courseId}/topics/${topicId}`}
+              style={{
+                padding: "12px 24px",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border-strong)",
+                color: "var(--text)",
+                borderRadius: 10,
+                fontWeight: 600,
+                fontSize: 14,
+                textDecoration: "none",
+              }}
+            >
+              Review weak areas
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }

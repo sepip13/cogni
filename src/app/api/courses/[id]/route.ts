@@ -42,6 +42,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
         },
         orderBy: { order: "asc" },
       },
+      files: {
+        select: { fileName: true },
+      },
     },
   });
 

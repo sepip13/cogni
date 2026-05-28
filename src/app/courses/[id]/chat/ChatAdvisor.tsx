@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
+  id: string;
   role: "user" | "assistant";
   content: string;
 }
@@ -14,14 +16,30 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch course name for breadcrumb
   useEffect(() => {
     fetch(`/api/courses/${courseId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setCourseName(d.name); });
+  }, [courseId]);
+
+  useEffect(() => {
+    fetch(`/api/courses/${courseId}/chat`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(data.messages.map((m: { id: string; role: string; content: string }) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          })));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setHistoryLoaded(true));
   }, [courseId]);
 
   // Scroll to bottom when messages update
@@ -31,15 +49,14 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
 
   async function sendMessage(text: string) {
     if (!text.trim() || streaming) return;
-    const userMsg: Message = { role: "user", content: text.trim() };
+    const userMsg: Message = { role: "user", content: text.trim(), id: crypto.randomUUID() };
     const updatedHistory = [...messages, userMsg];
     setMessages(updatedHistory);
     setInput("");
     setError("");
     setStreaming(true);
 
-    // Add placeholder assistant message that we'll stream into
-    const assistantMsg: Message = { role: "assistant", content: "" };
+    const assistantMsg: Message = { role: "assistant", content: "", id: crypto.randomUUID() };
     setMessages([...updatedHistory, assistantMsg]);
 
     try {
@@ -48,14 +65,12 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text.trim(),
-          // Send only prior exchanges (not the current user msg we just appended)
-          history: messages,
+          history: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
 
       if (!res.ok || !res.body) {
         setError("Chat request failed. Please try again.");
-        // Remove the empty assistant placeholder
         setMessages(updatedHistory);
         return;
       }
@@ -70,7 +85,7 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
         accumulated += decoder.decode(value, { stream: true });
         setMessages([
           ...updatedHistory,
-          { role: "assistant", content: accumulated },
+          { ...assistantMsg, content: accumulated },
         ]);
       }
     } catch {
@@ -171,7 +186,7 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
             <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 16, textAlign: "center" }}>
               Ask anything about {courseName || "your course"}.
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div className="fade-up-stagger" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {STARTERS.map((s) => (
                 <button
                   key={s}
@@ -189,14 +204,7 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
                     transition: "all 0.15s",
                     lineHeight: 1.4,
                   }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
-                    (e.currentTarget as HTMLElement).style.color = "var(--text)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-                    (e.currentTarget as HTMLElement).style.color = "var(--text-dim)";
-                  }}
+                  className="hover-text"
                 >
                   {s}
                 </button>
@@ -207,7 +215,7 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
 
         {messages.map((msg, i) => (
           <div
-            key={i}
+            key={msg.id}
             style={{
               display: "flex",
               justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
@@ -223,24 +231,36 @@ export function ChatAdvisor({ courseId }: { courseId: string }) {
                 color: msg.role === "user" ? "#fff" : "var(--text)",
                 fontSize: 14,
                 lineHeight: 1.6,
-                whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
               }}
             >
-              {msg.content}
-              {streaming && i === messages.length - 1 && msg.role === "assistant" && msg.content === "" && (
-                <span
+              {streaming && i === messages.length - 1 && msg.role === "assistant" && msg.content === "" ? (
+                <div
                   style={{
-                    display: "inline-block",
-                    width: 8,
-                    height: 14,
-                    background: "var(--accent)",
-                    borderRadius: 2,
-                    animation: "pulse 1s infinite",
-                    verticalAlign: "middle",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 14px",
+                    background: "var(--surface-2)",
+                    borderRadius: 20,
+                    fontSize: 13,
+                    color: "var(--text-dim)",
                   }}
-                  aria-label="Cogni is typing"
-                />
+                  aria-label="Cogni is thinking"
+                >
+                  <span className="thinking-dots" style={{ display: "flex", gap: 4 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "thinkDot 1.4s infinite", animationDelay: "0ms" }} />
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "thinkDot 1.4s infinite", animationDelay: "200ms" }} />
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "thinkDot 1.4s infinite", animationDelay: "400ms" }} />
+                  </span>
+                  Cogni is thinking…
+                </div>
+              ) : msg.role === "assistant" ? (
+                <div className="chat-markdown">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <span style={{ whiteSpace: "pre-wrap" }}>{msg.content}</span>
               )}
             </div>
           </div>

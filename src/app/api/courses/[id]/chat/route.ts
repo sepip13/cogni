@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { freeLLMStream } from "@/lib/freellm";
@@ -7,6 +7,32 @@ const TEMPERATURE = 0.4;
 const MAX_RAW_CHARS = 100_000;
 const MAX_HISTORY_TURNS = 20;
 const MAX_MESSAGE_CHARS = 10_000;
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id: courseId } = await params;
+
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { userId: true },
+  });
+
+  if (!course || course.userId !== session.user.id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const chatMessages = await prisma.chatMessage.findMany({
+    where: { courseId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, role: true, content: true, createdAt: true },
+  });
+
+  return NextResponse.json({ messages: chatMessages });
+}
 
 function buildSystemPrompt(courseName: string): string {
   return `You are Cogni's study advisor for ONE specific course: ${courseName}.
@@ -112,8 +138,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ];
 
   try {
+    await prisma.chatMessage.create({
+      data: { courseId, role: "user", content: body.message.slice(0, MAX_MESSAGE_CHARS) },
+    });
+
     const stream = await freeLLMStream(messages, { temperature: TEMPERATURE });
-    return new Response(stream, {
+
+    const [browserStream, captureStream] = (stream as ReadableStream).tee();
+
+    (async () => {
+      try {
+        const reader = captureStream.getReader();
+        const decoder = new TextDecoder();
+        let full = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          full += decoder.decode(value, { stream: true });
+        }
+        if (full.trim()) {
+          await prisma.chatMessage.create({
+            data: { courseId, role: "assistant", content: full },
+          });
+        }
+      } catch {
+        // best-effort persistence
+      }
+    })();
+
+    return new Response(browserStream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "X-Content-Type-Options": "nosniff",

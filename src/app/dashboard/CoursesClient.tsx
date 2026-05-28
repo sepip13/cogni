@@ -82,12 +82,22 @@ function EmptyState() {
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 28,
           marginBottom: 20,
         }}
         aria-hidden="true"
       >
-        📚
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <path d="M4 6h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z" stroke="url(#emptyGrad)" strokeWidth="1.5" />
+          <path d="M8 10h8M8 14h6" stroke="url(#emptyGrad)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M22 9l4-3v16l-4-3" stroke="url(#emptyGrad)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="23" cy="5" r="2" fill="var(--accent-2)" opacity="0.6" />
+          <defs>
+            <linearGradient id="emptyGrad" x1="2" y1="6" x2="26" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stopColor="var(--accent)" />
+              <stop offset="1" stopColor="var(--accent-2)" />
+            </linearGradient>
+          </defs>
+        </svg>
       </div>
       <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 10, letterSpacing: "-0.02em" }}>
         No courses yet
@@ -101,7 +111,7 @@ function EmptyState() {
           display: "inline-block",
           padding: "13px 28px",
           background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-          color: "#0a0e1a",
+          color: "var(--bg)",
           borderRadius: 10,
           fontWeight: 700,
           fontSize: 14,
@@ -123,6 +133,7 @@ function CourseCard({
   course: CourseListItem;
   onDelete: (id: string) => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -161,8 +172,7 @@ function CourseCard({
         transition: "border-color 0.15s",
         position: "relative",
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-strong)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
+      className="hover-border"
     >
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -199,32 +209,77 @@ function CourseCard({
           </div>
         </div>
 
-        {/* Delete button */}
-        {!confirming ? (
-          <button
-            onClick={() => setConfirming(true)}
-            style={{ color: "var(--text-faint)", fontSize: 16, padding: "2px 6px", borderRadius: 4, cursor: "pointer", flexShrink: 0 }}
-            aria-label={`Delete ${course.name}`}
-          >
-            ×
-          </button>
-        ) : (
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        {/* Kebab menu */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          {!confirming ? (
             <button
-              onClick={handleDelete}
-              disabled={deleting}
-              style={{ fontSize: 11, fontWeight: 700, color: "var(--high)", cursor: "pointer", padding: "3px 8px", background: "rgba(255,107,107,0.1)", borderRadius: 5 }}
+              onClick={() => setMenuOpen((v) => !v)}
+              style={{ color: "var(--text-faint)", fontSize: 18, padding: "2px 6px", borderRadius: 4, cursor: "pointer", letterSpacing: "0.1em" }}
+              aria-label={`Options for ${course.name}`}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
             >
-              {deleting ? "…" : "Delete"}
+              ···
             </button>
-            <button
-              onClick={() => setConfirming(false)}
-              style={{ fontSize: 11, color: "var(--text-dim)", cursor: "pointer", padding: "3px 8px" }}
+          ) : (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ fontSize: 11, fontWeight: 700, color: "var(--high)", cursor: "pointer", padding: "3px 8px", background: "rgba(255,107,107,0.1)", borderRadius: 5 }}
+              >
+                {deleting ? "…" : "Delete"}
+              </button>
+              <button
+                onClick={() => setConfirming(false)}
+                style={{ fontSize: 11, color: "var(--text-dim)", cursor: "pointer", padding: "3px 8px" }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {menuOpen && !confirming && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                right: 0,
+                top: "calc(100% + 4px)",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: 4,
+                minWidth: 140,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                zIndex: 10,
+              }}
             >
-              Cancel
-            </button>
-          </div>
-        )}
+              <button
+                role="menuitem"
+                onClick={() => { setMenuOpen(false); }}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 13, color: "var(--text-dim)", borderRadius: 6, cursor: "default", opacity: 0.5 }}
+                disabled
+              >
+                Re-analyze
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => { setMenuOpen(false); }}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 13, color: "var(--text-dim)", borderRadius: 6, cursor: "default", opacity: 0.5 }}
+                disabled
+              >
+                Duplicate
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => { setMenuOpen(false); setConfirming(true); }}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 12px", fontSize: 13, color: "var(--high)", borderRadius: 6, cursor: "pointer" }}
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Stats row */}
@@ -286,8 +341,7 @@ function CourseCard({
           textDecoration: "none",
           transition: "border-color 0.15s",
         }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-strong)"; }}
+        className="hover-text"
       >
         {course.status === "READY" ? "Open study plan →" : course.status === "PROCESSING" ? "View progress →" : "See details →"}
       </Link>
@@ -390,7 +444,18 @@ export function CoursesClient({
           <p style={{ fontSize: 14, color: "var(--text-dim)" }}>
             {courses.length === 0
               ? "No courses yet — upload your first one."
-              : `${courses.length} course${courses.length === 1 ? "" : "s"}`}
+              : (() => {
+                  const totalMinutes = courses.reduce((s, c) => s + (c.totalPrepTimeMinutes ?? 0), 0);
+                  const totalHours = Math.floor(totalMinutes / 60);
+                  const nearestExam = courses
+                    .map((c) => daysUntil(c.examDate))
+                    .filter((d): d is number => d !== null && d > 0)
+                    .sort((a, b) => a - b)[0];
+                  const parts = [`${courses.length} course${courses.length === 1 ? "" : "s"}`];
+                  if (totalHours > 0) parts.push(`${totalHours}h total study time`);
+                  if (nearestExam !== undefined) parts.push(`next exam in ${nearestExam}d`);
+                  return parts.join(" · ");
+                })()}
           </p>
         </div>
         <Link
@@ -414,6 +479,7 @@ export function CoursesClient({
         <EmptyState />
       ) : (
         <div
+          className="fade-up-stagger"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",

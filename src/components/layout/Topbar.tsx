@@ -83,10 +83,30 @@ export function Topbar() {
         {session && (
           <nav
             aria-label="Main navigation"
+            className="topbar-nav"
             style={{ display: "flex", gap: 6, fontSize: 13, color: "var(--text-dim)" }}
           >
             <NavButton href="/dashboard" active={isActive("/dashboard")}>
               Dashboard
+            </NavButton>
+            <Link
+              href="/courses/new"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "7px 14px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+                color: "var(--bg)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              + New course
+            </Link>
+            <NavButton href="/settings" active={isActive("/settings")}>
+              Settings
             </NavButton>
           </nav>
         )}
@@ -135,6 +155,19 @@ export function Topbar() {
                 <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {session.user?.name ?? session.user?.email}
                 </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: "1px 6px",
+                    borderRadius: 4,
+                    color: "var(--text-faint)",
+                    background: "var(--surface-2)",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  FREE
+                </span>
               </button>
 
               {menuOpen && (
@@ -152,6 +185,15 @@ export function Topbar() {
                     boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
                   }}
                 >
+                  {/* Mobile-only nav links */}
+                  <div className="topbar-mobile-menu">
+                    <MenuLink href="/courses/new" onClick={() => setMenuOpen(false)}>
+                      + New course
+                    </MenuLink>
+                    <MenuLink href="/settings" onClick={() => setMenuOpen(false)}>
+                      Settings
+                    </MenuLink>
+                  </div>
                   <MenuLink href="/settings" onClick={() => setMenuOpen(false)}>
                     Settings
                   </MenuLink>

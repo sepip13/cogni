@@ -11,12 +11,17 @@ const STEPS = [
 
 export function ProcessingView({ name }: { name?: string }) {
   const [step, setStep] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
 
-  // Advance one step every 7 s so the UI reflects rough progress
   useEffect(() => {
     const id = setInterval(() => {
       setStep((s) => Math.min(s + 1, STEPS.length - 1));
     }, 7000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -56,9 +61,15 @@ export function ProcessingView({ name }: { name?: string }) {
       >
         Cogni is reading{name ? ` ${name}` : " your course"}
       </h1>
-      <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 36 }}>
-        Usually takes 20–40 seconds…
+      <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 12 }}>
+        This usually takes 30–90 seconds
       </p>
+
+      {elapsed > 120 && (
+        <p style={{ fontSize: 13, color: "var(--med)", marginBottom: 12 }}>
+          Taking longer than usual — your materials may be complex
+        </p>
+      )}
 
       {/* Step list */}
       <div
@@ -102,7 +113,7 @@ export function ProcessingView({ name }: { name?: string }) {
                   justifyContent: "center",
                   flexShrink: 0,
                   animation: isActive ? "spin 0.8s linear infinite" : "none",
-                  color: isDone ? "#0a0e1a" : undefined,
+                  color: isDone ? "var(--bg)" : undefined,
                   fontSize: 12,
                 }}
                 aria-hidden="true"
@@ -126,8 +137,9 @@ export function ProcessingView({ name }: { name?: string }) {
         })}
       </div>
 
-      {/* Animated progress bar */}
+      {/* Animated progress bar with pulse glow */}
       <div
+        className="pulse-glow"
         style={{
           marginTop: 24,
           height: 4,

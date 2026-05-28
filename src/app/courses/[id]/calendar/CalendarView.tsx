@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { CalendarDay } from "@/app/api/courses/[id]/calendar/route";
 
@@ -23,6 +23,7 @@ export function CalendarView({ courseId }: { courseId: string }) {
   const [examDate, setExamDate] = useState<string | null>(null);
   const [courseName, setCourseName] = useState("");
   const [loading, setLoading] = useState(true);
+  const todayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     Promise.all([
@@ -34,6 +35,12 @@ export function CalendarView({ courseId }: { courseId: string }) {
       setCourseName(course.name ?? "");
     }).finally(() => setLoading(false));
   }, [courseId]);
+
+  useEffect(() => {
+    if (!loading && todayRef.current) {
+      todayRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [loading]);
 
   if (loading) {
     return (
@@ -98,6 +105,7 @@ export function CalendarView({ courseId }: { courseId: string }) {
         {calendar.map((day) => (
           <div
             key={day.date}
+            ref={day.isToday ? todayRef : undefined}
             style={{
               background: day.isToday ? "var(--surface-2)" : "var(--surface)",
               border: `1px solid ${day.isToday ? "var(--accent)" : "var(--border)"}`,
@@ -139,7 +147,11 @@ export function CalendarView({ courseId }: { courseId: string }) {
                   style={{
                     fontSize: 12,
                     fontFamily: "var(--font-jetbrains), monospace",
-                    color: "var(--text-faint)",
+                    fontWeight: 700,
+                    color: "var(--accent)",
+                    background: "var(--accent-soft)",
+                    padding: "3px 10px",
+                    borderRadius: 6,
                   }}
                 >
                   {fmtMinutes(day.totalMinutes)}
@@ -166,14 +178,7 @@ export function CalendarView({ courseId }: { courseId: string }) {
                       color: "inherit",
                       transition: "border-color 0.15s",
                     }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = t.studied
-                        ? "rgba(52,211,153,0.2)"
-                        : "transparent";
-                    }}
+                    className="hover-accent-border"
                   >
                     <span
                       style={{

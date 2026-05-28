@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { QualityTierPicker, type QualityTier, type LlmModel } from "./QualityTierPicker";
 
 const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt"];
 const ALLOWED_MIMES = new Set([
@@ -13,7 +14,7 @@ const ALLOWED_MIMES = new Set([
   "text/plain",
 ]);
 const MAX_FILES = 10;
-const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB — must match server
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 interface SelectedFile {
   file: File;
@@ -21,20 +22,6 @@ interface SelectedFile {
 }
 
 type SubmitState = "idle" | "uploading" | "error";
-
-// ── Model definitions (fetched from DB) ────────────────────────────────────
-
-interface LlmModel {
-  id: string;
-  modelId: string;
-  label: string;
-  desc: string;
-  bestFor: string;
-  category: string;
-  provider: string;
-  tier: "FREE" | "PRO";
-}
-
 const EDUCATION_LEVELS = [
   { id: "college",      label: "College / Undergrad" },
   { id: "grad",         label: "Grad School" },
@@ -46,9 +33,10 @@ const EDUCATION_LEVELS = [
 
 interface NewCourseFormProps {
   userPlan: "FREE" | "PRO";
+  defaultQualityTier?: string | null;
 }
 
-export function NewCourseForm({ userPlan }: NewCourseFormProps) {
+export function NewCourseForm({ userPlan, defaultQualityTier }: NewCourseFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<SelectedFile[]>([]);
@@ -57,9 +45,13 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
   const [examDate, setExamDate] = useState("");
   const [models, setModels] = useState<LlmModel[]>([]);
   const [model, setModel] = useState("auto");
+  const [qualityTier, setQualityTier] = useState<QualityTier>(
+    (defaultQualityTier === "quick" || defaultQualityTier === "maximum") ? defaultQualityTier : "balanced"
+  );
   const [educationLevel, setEducationLevel] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [showPaste, setShowPaste] = useState(false);
+  const [modelsError, setModelsError] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -95,29 +87,37 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
     });
   }, []);
 
+  function resolveTierToModelId(tier: QualityTier): string {
+    const freeModels = models.filter((m) => m.tier === "FREE");
+    const proModels = models.filter((m) => m.tier === "PRO");
+    if (tier === "quick") {
+      const sorted = [...freeModels].sort((a, b) => a.label.localeCompare(b.label));
+      return sorted[0]?.modelId ?? freeModels[0]?.modelId ?? "auto";
+    }
+    if (tier === "maximum") {
+      return proModels[0]?.modelId ?? freeModels[freeModels.length - 1]?.modelId ?? "auto";
+    }
+    return freeModels[freeModels.length - 1]?.modelId ?? freeModels[0]?.modelId ?? "auto";
+  }
+
   useEffect(() => {
     fetch("/api/models")
       .then((r) => r.json())
       .then((data: LlmModel[]) => {
         setModels(data);
-        const first = data.find((m) => m.tier === "FREE") ?? data[0];
-        if (first) setModel(first.modelId);
+        setModelsError(false);
       })
-      .catch(() => {});
+      .catch(() => {
+        setModelsError(true);
+      });
   }, []);
 
-  const freeModels = models.filter((m) => m.tier === "FREE");
-  const proModels = models.filter((m) => m.tier === "PRO");
-
-  function groupByCategory(list: LlmModel[]): [string, LlmModel[]][] {
-    const map = new Map<string, LlmModel[]>();
-    for (const m of list) {
-      const cat = m.category || "General";
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(m);
+  useEffect(() => {
+    if (models.length > 0) {
+      setModel(resolveTierToModelId(qualityTier));
     }
-    return Array.from(map.entries());
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qualityTier, models]);
 
   function removeFile(id: string) {
     setFiles((prev) => prev.filter((f) => f.id !== id));
@@ -291,146 +291,6 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
             <option key={l.id} value={l.id}>{l.label}</option>
           ))}
         </select>
-      </div>
-
-      {/* ── Model selector ──────────────────────────────────────────── */}
-      <div style={{ marginBottom: 24 }}>
-        <label
-          style={{
-            display: "block",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "var(--text-dim)",
-            marginBottom: 12,
-          }}
-        >
-          AI Model
-        </label>
-
-        {/* Free models by category */}
-        {freeModels.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>
-              Free
-            </div>
-            {groupByCategory(freeModels).map(([cat, items]) => (
-              <div key={cat} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 }}>
-                  {cat}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  {items.map((m) => {
-                    const selected = model === m.modelId;
-                    return (
-                      <button
-                        key={m.modelId}
-                        type="button"
-                        onClick={() => { if (!uploading) setModel(m.modelId); }}
-                        disabled={uploading}
-                        style={{
-                          padding: "10px 10px 9px",
-                          borderRadius: 10,
-                          border: selected ? "2px solid var(--accent)" : "1px solid var(--border-strong)",
-                          background: selected ? "var(--surface-2)" : "var(--surface)",
-                          cursor: uploading ? "default" : "pointer",
-                          transition: "all 0.15s",
-                          textAlign: "left",
-                        }}
-                      >
-                        <div style={{ fontSize: 10, fontWeight: 700, color: selected ? "var(--accent-2)" : "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
-                          {m.provider}
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: selected ? "var(--accent)" : "var(--text)", lineHeight: 1.2 }}>
-                          {m.label}
-                        </div>
-                        <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
-                          {m.desc}
-                        </div>
-                        {m.bestFor && (
-                          <div style={{ fontSize: 9, color: "var(--accent)", marginTop: 4, opacity: 0.8 }}>
-                            Best for: {m.bestFor}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Pro models by category */}
-        {proModels.length > 0 && (
-          <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                Pro
-              </div>
-              {userPlan === "FREE" && (
-                <a href="/upgrade" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 8px", borderRadius: 20, textDecoration: "none" }}>
-                  Upgrade
-                </a>
-              )}
-            </div>
-            {groupByCategory(proModels).map(([cat, items]) => (
-              <div key={cat} style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 }}>
-                  {cat}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  {items.map((m) => {
-                    const locked = userPlan === "FREE";
-                    const selected = model === m.modelId;
-                    return (
-                      <button
-                        key={m.modelId}
-                        type="button"
-                        onClick={() => {
-                          if (locked) { router.push("/upgrade"); return; }
-                          if (!uploading) setModel(m.modelId);
-                        }}
-                        disabled={uploading}
-                        title={locked ? "Pro plan required" : undefined}
-                        style={{
-                          padding: "10px 10px 9px",
-                          borderRadius: 10,
-                          border: selected ? "2px solid var(--accent)" : "1px solid var(--border-strong)",
-                          background: locked ? "var(--surface)" : selected ? "var(--surface-2)" : "var(--surface)",
-                          cursor: uploading ? "default" : "pointer",
-                          transition: "all 0.15s",
-                          textAlign: "left",
-                          opacity: locked ? 0.45 : 1,
-                          position: "relative",
-                        }}
-                      >
-                        {locked && (
-                          <span style={{ position: "absolute", top: 6, right: 6, fontSize: 11 }} aria-hidden="true">
-                            🔒
-                          </span>
-                        )}
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
-                          {m.provider}
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: selected ? "var(--accent)" : "var(--text)", lineHeight: 1.2 }}>
-                          {m.label}
-                        </div>
-                        <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
-                          {m.desc}
-                        </div>
-                        {m.bestFor && (
-                          <div style={{ fontSize: 9, color: "var(--accent)", marginTop: 4, opacity: 0.8 }}>
-                            Best for: {m.bestFor}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Dropzone */}
@@ -616,6 +476,18 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
           }}
         />
       )}
+
+      <QualityTierPicker
+        qualityTier={qualityTier}
+        onTierChange={setQualityTier}
+        model={model}
+        onModelChange={setModel}
+        models={models}
+        modelsError={modelsError}
+        userPlan={userPlan}
+        uploading={uploading}
+        onNavigateUpgrade={() => router.push("/upgrade")}
+      />
 
       {/* Error */}
       {errorMsg && (
