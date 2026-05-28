@@ -1170,6 +1170,8 @@ interface AdminModel {
   modelId: string;
   label: string;
   desc: string;
+  bestFor: string;
+  category: string;
   provider: string;
   tier: "FREE" | "PRO";
   isActive: boolean;

@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Metadata } from "next";
 import { AdminPanel } from "./AdminPanel";
 import { isAdmin } from "@/lib/admin";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = { title: "Admin — Cogni" };
 
@@ -11,20 +12,38 @@ export default async function AdminPage() {
   const session = await auth();
   const email = session?.user?.email?.toLowerCase();
 
-  if (!isAdmin(email)) redirect("/dashboard");
+  if (!isAdmin(email)) redirect("/admin/login");
 
-  // Fetch users from our own admin API (server-to-server, secret stays on server)
-  const base = process.env.NEXTAUTH_URL ?? process.env.AUTH_URL ?? "http://localhost:3012";
-  const res = await fetch(`${base}/api/admin/users`, {
-    headers: { Authorization: `Bearer ${process.env.ADMIN_SECRET ?? ""}` },
-    cache: "no-store",
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      plan: true,
+      proAccessEndsAt: true,
+      stripeSubscriptionId: true,
+      createdAt: true,
+      _count: { select: { courses: true, redemptions: true } },
+      courses: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          createdAt: true,
+          _count: { select: { topics: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
   });
 
-  const users = res.ok ? await res.json() : [];
+  const serialized = JSON.parse(JSON.stringify(users));
 
   return (
     <AppLayout>
-      <AdminPanel initialUsers={users} />
+      <AdminPanel initialUsers={serialized} />
     </AppLayout>
   );
 }

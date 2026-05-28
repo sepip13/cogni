@@ -10,6 +10,8 @@ export async function GET() {
       modelId: true,
       label: true,
       desc: true,
+      bestFor: true,
+      category: true,
       provider: true,
       tier: true,
     },

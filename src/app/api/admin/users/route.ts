@@ -32,8 +32,21 @@ export async function GET(req: NextRequest) {
       email: true,
       name: true,
       plan: true,
+      proAccessEndsAt: true,
+      stripeSubscriptionId: true,
       createdAt: true,
-      _count: { select: { courses: true } },
+      _count: { select: { courses: true, redemptions: true } },
+      courses: {
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          createdAt: true,
+          _count: { select: { topics: true } },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });

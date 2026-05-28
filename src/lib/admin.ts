@@ -1,5 +1,5 @@
 export const ADMIN_EMAILS = (
-  process.env.ADMIN_EMAILS ?? "sepipsy@gmail.com,sepspipsy@gmail.com"
+  process.env.ADMIN_EMAILS ?? "sepipsy@gmail.com,sepspipsy@gmail.com,admin@cogni.app"
 )
   .split(",")
   .map((e) => e.trim().toLowerCase());

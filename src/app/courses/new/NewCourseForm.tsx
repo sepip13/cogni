@@ -29,6 +29,8 @@ interface LlmModel {
   modelId: string;
   label: string;
   desc: string;
+  bestFor: string;
+  category: string;
   provider: string;
   tier: "FREE" | "PRO";
 }
@@ -106,6 +108,16 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
 
   const freeModels = models.filter((m) => m.tier === "FREE");
   const proModels = models.filter((m) => m.tier === "PRO");
+
+  function groupByCategory(list: LlmModel[]): [string, LlmModel[]][] {
+    const map = new Map<string, LlmModel[]>();
+    for (const m of list) {
+      const cat = m.category || "General";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(m);
+    }
+    return Array.from(map.entries());
+  }
 
   function removeFile(id: string) {
     setFiles((prev) => prev.filter((f) => f.id !== id));
@@ -295,182 +307,128 @@ export function NewCourseForm({ userPlan }: NewCourseFormProps) {
           AI Model
         </label>
 
-        {/* Free models */}
+        {/* Free models by category */}
         {freeModels.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: "var(--text-faint)",
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                marginBottom: 8,
-              }}
-            >
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>
               Free
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {freeModels.map((m) => {
-                const selected = model === m.modelId;
-                return (
-                  <button
-                    key={m.modelId}
-                    type="button"
-                    onClick={() => { if (!uploading) setModel(m.modelId); }}
-                    disabled={uploading}
-                    style={{
-                      padding: "10px 10px 9px",
-                      borderRadius: 10,
-                      border: selected
-                        ? "2px solid var(--accent)"
-                        : "1px solid var(--border-strong)",
-                      background: selected ? "var(--surface-2)" : "var(--surface)",
-                      cursor: uploading ? "default" : "pointer",
-                      transition: "all 0.15s",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: selected ? "var(--accent-2)" : "var(--text-faint)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        marginBottom: 3,
-                      }}
-                    >
-                      {m.provider}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: selected ? "var(--accent)" : "var(--text)",
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {m.label}
-                    </div>
-                    <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
-                      {m.desc}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {groupByCategory(freeModels).map(([cat, items]) => (
+              <div key={cat} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 }}>
+                  {cat}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                  {items.map((m) => {
+                    const selected = model === m.modelId;
+                    return (
+                      <button
+                        key={m.modelId}
+                        type="button"
+                        onClick={() => { if (!uploading) setModel(m.modelId); }}
+                        disabled={uploading}
+                        style={{
+                          padding: "10px 10px 9px",
+                          borderRadius: 10,
+                          border: selected ? "2px solid var(--accent)" : "1px solid var(--border-strong)",
+                          background: selected ? "var(--surface-2)" : "var(--surface)",
+                          cursor: uploading ? "default" : "pointer",
+                          transition: "all 0.15s",
+                          textAlign: "left",
+                        }}
+                      >
+                        <div style={{ fontSize: 10, fontWeight: 700, color: selected ? "var(--accent-2)" : "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+                          {m.provider}
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: selected ? "var(--accent)" : "var(--text)", lineHeight: 1.2 }}>
+                          {m.label}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
+                          {m.desc}
+                        </div>
+                        {m.bestFor && (
+                          <div style={{ fontSize: 9, color: "var(--accent)", marginTop: 4, opacity: 0.8 }}>
+                            Best for: {m.bestFor}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Pro models */}
+        {/* Pro models by category */}
         {proModels.length > 0 && (
           <div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 8,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: "var(--accent)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                ✦ Pro
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                Pro
               </div>
               {userPlan === "FREE" && (
-                <a
-                  href="/upgrade"
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "var(--accent)",
-                    background: "var(--accent-soft)",
-                    padding: "2px 8px",
-                    borderRadius: 20,
-                    textDecoration: "none",
-                  }}
-                >
-                  Upgrade →
+                <a href="/upgrade" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 8px", borderRadius: 20, textDecoration: "none" }}>
+                  Upgrade
                 </a>
               )}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {proModels.map((m) => {
-                const locked = userPlan === "FREE";
-                const selected = model === m.modelId;
-                return (
-                  <button
-                    key={m.modelId}
-                    type="button"
-                    onClick={() => {
-                      if (locked) { router.push("/upgrade"); return; }
-                      if (!uploading) setModel(m.modelId);
-                    }}
-                    disabled={uploading}
-                    title={locked ? "Pro plan required — click to upgrade" : undefined}
-                    style={{
-                      padding: "10px 10px 9px",
-                      borderRadius: 10,
-                      border: selected
-                        ? "2px solid var(--accent)"
-                        : "1px solid var(--border-strong)",
-                      background: locked
-                        ? "var(--surface)"
-                        : selected
-                        ? "var(--surface-2)"
-                        : "var(--surface)",
-                      cursor: uploading ? "default" : "pointer",
-                      transition: "all 0.15s",
-                      textAlign: "left",
-                      opacity: locked ? 0.45 : 1,
-                      position: "relative",
-                    }}
-                  >
-                    {locked && (
-                      <span
-                        style={{ position: "absolute", top: 6, right: 6, fontSize: 11 }}
-                        aria-hidden="true"
+            {groupByCategory(proModels).map(([cat, items]) => (
+              <div key={cat} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 }}>
+                  {cat}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                  {items.map((m) => {
+                    const locked = userPlan === "FREE";
+                    const selected = model === m.modelId;
+                    return (
+                      <button
+                        key={m.modelId}
+                        type="button"
+                        onClick={() => {
+                          if (locked) { router.push("/upgrade"); return; }
+                          if (!uploading) setModel(m.modelId);
+                        }}
+                        disabled={uploading}
+                        title={locked ? "Pro plan required" : undefined}
+                        style={{
+                          padding: "10px 10px 9px",
+                          borderRadius: 10,
+                          border: selected ? "2px solid var(--accent)" : "1px solid var(--border-strong)",
+                          background: locked ? "var(--surface)" : selected ? "var(--surface-2)" : "var(--surface)",
+                          cursor: uploading ? "default" : "pointer",
+                          transition: "all 0.15s",
+                          textAlign: "left",
+                          opacity: locked ? 0.45 : 1,
+                          position: "relative",
+                        }}
                       >
-                        🔒
-                      </span>
-                    )}
-                    <div
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: "var(--text-faint)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        marginBottom: 3,
-                      }}
-                    >
-                      {m.provider}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: selected ? "var(--accent)" : "var(--text)",
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {m.label}
-                    </div>
-                    <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
-                      {m.desc}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                        {locked && (
+                          <span style={{ position: "absolute", top: 6, right: 6, fontSize: 11 }} aria-hidden="true">
+                            🔒
+                          </span>
+                        )}
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+                          {m.provider}
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: selected ? "var(--accent)" : "var(--text)", lineHeight: 1.2 }}>
+                          {m.label}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3 }}>
+                          {m.desc}
+                        </div>
+                        {m.bestFor && (
+                          <div style={{ fontSize: 9, color: "var(--accent)", marginTop: 4, opacity: 0.8 }}>
+                            Best for: {m.bestFor}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

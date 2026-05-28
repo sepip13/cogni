@@ -1,10 +1,17 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { LanguageSettingsForm } from "./LanguageSettingsForm";
 
 export default async function SettingsPage() {
   const session = await auth();
-  if (!session?.user) redirect("/auth/signin");
+  if (!session?.user?.id) redirect("/auth/signin");
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { preferredLanguage: true },
+  });
 
   return (
     <AppLayout>
@@ -12,9 +19,9 @@ export default async function SettingsPage() {
         <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
           Settings
         </h1>
-        <p style={{ color: "var(--text-dim)", marginTop: 8 }}>
-          Account management coming in Step 14.
-        </p>
+        <div style={{ marginTop: 32 }}>
+          <LanguageSettingsForm currentLanguage={user?.preferredLanguage ?? "English"} />
+        </div>
       </div>
     </AppLayout>
   );

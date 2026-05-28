@@ -177,6 +177,8 @@ model LlmModel {
   modelId   String    @unique
   label     String
   desc      String
+  bestFor   String    @default("")
+  category  String    @default("General")
   provider  String
   tier      ModelTier @default(FREE)
   isActive  Boolean   @default(true)
