@@ -21,6 +21,16 @@ const MODELS = [
   { modelId: "nvidia/nemotron-3-super-120b-a12b:free",      label: "☕ 5 Espressos Deep",  desc: "overcaffeinated genius",   provider: "OpenRouter", tier: "PRO" as const },
   { modelId: "google/gemma-4-31b-it:free",                  label: "💎 Surprise A+",        desc: "didn't study, still aced", provider: "OpenRouter", tier: "PRO" as const },
   { modelId: "nousresearch/hermes-3-llama-3.1-405b:free",   label: "👑 Ruins The Curve",   desc: "everyone hates u now",     provider: "OpenRouter", tier: "PRO" as const },
+  { modelId: "gpt-4o",                                      label: "🧪 Secret Weapon",     desc: "prof thinks ur cheating",  provider: "GitHub",     tier: "PRO" as const },
+  { modelId: "qwen/qwen3-coder:free",                       label: "💻 Code Monkey Mode",  desc: "debugging ur life choices", provider: "OpenRouter", tier: "PRO" as const },
+  { modelId: "magistral-medium-latest",                      label: "🎩 Fancy Pants",       desc: "speaks in thesis format",  provider: "Mistral",    tier: "PRO" as const },
+  { modelId: "DeepSeek-V3.2",                               label: "🔬 Lab Rat Energy",    desc: "deeper than ur textbook",  provider: "SambaNova",  tier: "PRO" as const },
+  { modelId: "command-a-03-2025",                            label: "🏆 Deans List",        desc: "straight As or bust",      provider: "Cohere",     tier: "PRO" as const },
+  { modelId: "mistral-large-latest",                         label: "🗼 Eiffel Tower Brain",desc: "oui oui, i know everything",provider: "Mistral",   tier: "PRO" as const },
+  { modelId: "openai/gpt-4.1",                              label: "🤯 Overachiever",      desc: "studied the whole internet",provider: "GitHub",    tier: "PRO" as const },
+  { modelId: "gemini-3.1-flash-lite-preview",                label: "⚡ Lightning Round",    desc: "speed > everything",       provider: "Google",     tier: "PRO" as const },
+  { modelId: "glm-4.5-flash",                               label: "🐉 Dragon Scholar",    desc: "ancient wisdom, fast brain",provider: "Zhipu",     tier: "PRO" as const },
+  { modelId: "codestral-latest",                             label: "⭐ Code Wizard",        desc: "turns coffee into code",   provider: "Mistral",    tier: "PRO" as const },
 ];
 
 async function main() {

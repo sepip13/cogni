@@ -66,7 +66,7 @@ export async function POST() {
           recurring: { interval: "month" },
           product_data: {
             name: "Cogni Pro",
-            description: "Unlock Claude Haiku, Sonnet & Opus for AI-powered study plans",
+            description: "Unlock 20+ premium AI models for better study plans",
             images: [`${APP_URL}/logo.png`],
           },
           unit_amount: PRICE_PER_MONTH_CENTS,

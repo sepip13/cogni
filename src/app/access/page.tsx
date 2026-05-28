@@ -104,11 +104,10 @@ export default async function AccessPage({ searchParams }: PageProps) {
     if (!s?.user?.id) {
       redirect(`/auth/signin?callbackUrl=${encodeURIComponent(`/access?code=${upper}`)}`);
     }
+    let accessEndsAt: Date;
     try {
-      const { accessEndsAt } = await redeemCode(upper, s.user.id);
-      redirect(
-        `/dashboard?accessGranted=1&until=${encodeURIComponent(accessEndsAt.toISOString())}`
-      );
+      const result = await redeemCode(upper, s.user.id);
+      accessEndsAt = result.accessEndsAt;
     } catch (err) {
       const msg =
         err instanceof RedeemError
@@ -116,6 +115,9 @@ export default async function AccessPage({ searchParams }: PageProps) {
           : "something_went_wrong";
       redirect(`/access?code=${upper}&claimError=${msg}`);
     }
+    redirect(
+      `/dashboard?accessGranted=1&until=${encodeURIComponent(accessEndsAt.toISOString())}`
+    );
   }
 
   const signinUrl = `/auth/signin?callbackUrl=${encodeURIComponent(`/access?code=${upper}`)}`;
@@ -164,7 +166,7 @@ export default async function AccessPage({ searchParams }: PageProps) {
       <p style={{ fontSize: 15, color: "var(--text-dim)", marginBottom: 36, lineHeight: 1.6 }}>
         This link gives you{" "}
         <strong style={{ color: "var(--text)" }}>{validCode.durationDays} days</strong> of Pro
-        access — Claude AI for your study plans.
+        access — premium AI models for your study plans.
       </p>
 
       {claimError && (

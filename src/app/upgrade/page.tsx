@@ -112,12 +112,12 @@ export default async function UpgradePage({
             marginBottom: 14,
           }}
         >
-          Unlock <span className="grad-text">Claude AI</span>
+          Unlock <span className="grad-text">Pro AI Models</span>
         </h1>
 
         <p style={{ color: "var(--text-dim)", fontSize: 16, marginBottom: 40, lineHeight: 1.6 }}>
-          Pro gives you access to Claude Haiku, Sonnet, and Opus —
-          Anthropic&apos;s most accurate models for study plan generation.
+          Pro gives you access to 20+ premium AI models —
+          GPT-4o, Mistral Large, DeepSeek, and more for better study plans.
         </p>
 
         {/* Feature comparison */}
@@ -169,9 +169,9 @@ export default async function UpgradePage({
             </div>
             {[
               "Everything in Free",
-              "Claude Haiku (fast)",
-              "Claude Sonnet (balanced)",
-              "Claude Opus (best quality)",
+              "20+ premium AI models",
+              "GPT-4o · Mistral · DeepSeek",
+              "Best study plan quality",
             ].map((f) => (
               <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 14 }}>
                 <span style={{ color: "var(--accent)" }}>✓</span>
