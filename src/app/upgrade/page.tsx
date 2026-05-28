@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Metadata } from "next";
 import { UpgradeButton } from "./UpgradeButton";
+import { AccessCodeSection } from "./AccessCodeSection";
 import { prisma } from "@/lib/prisma";
+import { isUserPro } from "@/lib/access-codes";
 
 export const metadata: Metadata = {
   title: "Upgrade to Pro — Cogni",
@@ -21,9 +23,9 @@ export default async function UpgradePage({
 
   const dbUser = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { plan: true },
+    select: { plan: true, proAccessEndsAt: true },
   });
-  const isPro = dbUser?.plan === "PRO";
+  const isPro = isUserPro(dbUser ?? { plan: "FREE", proAccessEndsAt: null });
 
   return (
     <AppLayout>
@@ -186,6 +188,7 @@ export default async function UpgradePage({
             <p style={{ fontSize: 13, color: "var(--text-faint)" }}>
               Secure payment via Stripe · Cancel anytime
             </p>
+            <AccessCodeSection />
           </>
         ) : (
           <a

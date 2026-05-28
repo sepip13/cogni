@@ -297,9 +297,18 @@ function CourseCard({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function CoursesClient({ userName }: { userName: string | null }) {
+export function CoursesClient({
+  userName,
+  accessGranted = false,
+  accessUntil = null,
+}: {
+  userName: string | null;
+  accessGranted?: boolean;
+  accessUntil?: string | null;
+}) {
   const router = useRouter();
   const [courses, setCourses] = useState<CourseListItem[] | null>(null);
+  const [showBanner, setShowBanner] = useState(accessGranted);
 
   useEffect(() => {
     fetch("/api/courses")
@@ -314,8 +323,55 @@ export function CoursesClient({ userName }: { userName: string | null }) {
 
   if (courses === null) return <DashboardSkeleton />;
 
+  const untilFormatted = accessUntil
+    ? new Date(accessUntil).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+
   return (
     <div className="fade-in">
+      {/* Access granted banner */}
+      {showBanner && (
+        <div
+          style={{
+            background: "var(--accent-soft)",
+            border: "1px solid var(--accent)",
+            borderRadius: 12,
+            padding: "12px 20px",
+            marginBottom: 24,
+            fontSize: 14,
+            color: "var(--accent)",
+            fontWeight: 600,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <span>
+            ✦ Pro access activated{untilFormatted ? ` — expires ${untilFormatted}` : ""}
+          </span>
+          <button
+            onClick={() => setShowBanner(false)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--accent)",
+              cursor: "pointer",
+              fontSize: 16,
+              padding: "0 4px",
+              lineHeight: 1,
+            }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div
         style={{

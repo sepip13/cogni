@@ -16,10 +16,12 @@ model User {
   plan                 UserPlan  @default(FREE)
   stripeCustomerId     String?   @unique
   stripeSubscriptionId String?   @unique
+  proAccessEndsAt      DateTime?
   createdAt            DateTime  @default(now())
-  accounts  Account[]
-  sessions  Session[]
-  courses   Course[]
+  accounts    Account[]
+  sessions    Session[]
+  courses     Course[]
+  redemptions AccessCodeRedemption[]
 }
 
 enum UserPlan {
@@ -128,6 +130,32 @@ model ChatMessage {
   role      String
   content   String   @db.Text
   createdAt DateTime @default(now())
+}
+
+model AccessCode {
+  id            String                 @id @default(cuid())
+  code          String                 @unique
+  durationDays  Int
+  maxUses       Int                    @default(1)
+  usedCount     Int                    @default(0)
+  codeExpiresAt DateTime?
+  isActive      Boolean                @default(true)
+  note          String?
+  createdBy     String
+  createdAt     DateTime               @default(now())
+  redemptions   AccessCodeRedemption[]
+}
+
+model AccessCodeRedemption {
+  id           String     @id @default(cuid())
+  codeId       String
+  code         AccessCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redeemedAt   DateTime   @default(now())
+  accessEndsAt DateTime
+
+  @@unique([codeId, userId])
 }
 
 model PracticeAttempt {

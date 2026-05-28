@@ -6,18 +6,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-
-const ADMIN_EMAILS = (
-  process.env.ADMIN_EMAILS ?? "sepipsy@gmail.com,sepspipsy@gmail.com"
-)
-  .split(",")
-  .map((e) => e.trim().toLowerCase());
+import { isAdmin } from "@/lib/admin";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
   const callerEmail = session?.user?.email?.toLowerCase();
 
-  if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail)) {
+  if (!isAdmin(callerEmail)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
