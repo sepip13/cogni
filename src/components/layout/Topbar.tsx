@@ -89,6 +89,9 @@ export function Topbar() {
             <NavButton href="/dashboard" active={isActive("/dashboard")}>
               Dashboard
             </NavButton>
+            <NavButton href="/chat" active={isActive("/chat")}>
+              Chat
+            </NavButton>
             <Link
               href="/courses/new"
               style={{
@@ -187,11 +190,14 @@ export function Topbar() {
                 >
                   {/* Mobile-only nav links */}
                   <div className="topbar-mobile-menu">
+                    <MenuLink href="/dashboard" onClick={() => setMenuOpen(false)}>
+                      Dashboard
+                    </MenuLink>
+                    <MenuLink href="/chat" onClick={() => setMenuOpen(false)}>
+                      Chat
+                    </MenuLink>
                     <MenuLink href="/courses/new" onClick={() => setMenuOpen(false)}>
                       + New course
-                    </MenuLink>
-                    <MenuLink href="/settings" onClick={() => setMenuOpen(false)}>
-                      Settings
                     </MenuLink>
                   </div>
                   <MenuLink href="/settings" onClick={() => setMenuOpen(false)}>
