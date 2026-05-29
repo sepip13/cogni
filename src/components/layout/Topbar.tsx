@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useState } from "react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function Topbar() {
   const pathname = usePathname();
@@ -116,6 +117,7 @@ export function Topbar() {
 
         {/* Right side */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <ThemeToggle />
           {session ? (
             <div style={{ position: "relative" }}>
               <button

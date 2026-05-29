@@ -11,7 +11,8 @@ interface ChatThreadProps {
   error: string;
   selectedModelLabel: string;
   onSend: (text: string) => void;
-  onToggleSidebar?: () => void;
+  onToggleHistory?: () => void;
+  onToggleModels?: () => void;
 }
 
 const SUGGESTIONS = [
@@ -28,7 +29,8 @@ export function ChatThread({
   error,
   selectedModelLabel,
   onSend,
-  onToggleSidebar,
+  onToggleHistory,
+  onToggleModels,
 }: ChatThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasModel = selectedModelLabel.trim() !== "";
@@ -40,7 +42,11 @@ export function ChatThread({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
-      <ThreadHeader label={selectedModelLabel} onToggleSidebar={onToggleSidebar} />
+      <ThreadHeader
+        label={selectedModelLabel}
+        onToggleHistory={onToggleHistory}
+        onToggleModels={onToggleModels}
+      />
 
       <div
         role="log"
@@ -87,12 +93,26 @@ export function ChatThread({
   );
 }
 
+const headerBtnStyle: React.CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  color: "var(--text)",
+  cursor: "pointer",
+  fontSize: 14,
+  lineHeight: 1,
+  padding: "7px 11px",
+  flexShrink: 0,
+};
+
 function ThreadHeader({
   label,
-  onToggleSidebar,
+  onToggleHistory,
+  onToggleModels,
 }: {
   label: string;
-  onToggleSidebar?: () => void;
+  onToggleHistory?: () => void;
+  onToggleModels?: () => void;
 }) {
   return (
     <div
@@ -106,23 +126,15 @@ function ThreadHeader({
       }}
     >
       <button
-        className="chat-thread-toggle"
-        onClick={onToggleSidebar}
-        aria-label="Toggle model & history sidebar"
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          color: "var(--text)",
-          cursor: "pointer",
-          fontSize: 15,
-          lineHeight: 1,
-          padding: "6px 10px",
-        }}
+        className="chat-pane-toggle"
+        onClick={onToggleHistory}
+        aria-label="Show conversation history"
+        style={headerBtnStyle}
       >
         ☰
       </button>
-      <div style={{ minWidth: 0 }}>
+
+      <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Chat</div>
         <div
           style={{
@@ -136,6 +148,15 @@ function ThreadHeader({
           {label || "No model selected"}
         </div>
       </div>
+
+      <button
+        className="chat-pane-toggle"
+        onClick={onToggleModels}
+        aria-label="Show model picker"
+        style={headerBtnStyle}
+      >
+        ▦ Models
+      </button>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import type { Metadata } from "next";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const metadata: Metadata = {
   title: "Cogni — The Study Assistant That Actually Knows Your Course",
@@ -114,7 +115,7 @@ export default async function HomePage() {
         style={{
           position: "sticky",
           top: 0,
-          background: "rgba(10,14,26,0.88)",
+          background: "var(--nav-bg)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
           borderBottom: "1px solid var(--border)",
@@ -160,19 +161,22 @@ export default async function HomePage() {
             </span>
             Cogni
           </div>
-          <Link
-            href={ctaHref}
-            style={{
-              padding: "8px 18px",
-              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-              color: "var(--bg)",
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 700,
-            }}
-          >
-            {ctaLabel}
-          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <ThemeToggle />
+            <Link
+              href={ctaHref}
+              style={{
+                padding: "8px 18px",
+                background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+                color: "var(--bg)",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              {ctaLabel}
+            </Link>
+          </div>
         </div>
       </nav>
 
@@ -693,6 +697,102 @@ export default async function HomePage() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Survey band ───────────────────────────────────────────────────── */}
+      <section style={{ padding: "72px 24px", borderBottom: "1px solid var(--border)" }}>
+        <div
+          style={{
+            position: "relative",
+            maxWidth: 920,
+            margin: "0 auto",
+            overflow: "hidden",
+            borderRadius: 24,
+            border: "1px solid var(--border-strong)",
+            background: "var(--surface)",
+            padding: "clamp(32px, 5vw, 56px)",
+          }}
+        >
+          {/* accent glow */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: -120,
+              right: -80,
+              width: 320,
+              height: 320,
+              background: "radial-gradient(circle, var(--accent-soft), transparent 70%)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 32,
+            }}
+          >
+            <div style={{ flex: "1 1 380px", minWidth: 0 }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "var(--accent)",
+                  background: "var(--accent-soft)",
+                  padding: "5px 12px",
+                  borderRadius: 999,
+                  marginBottom: 18,
+                }}
+              >
+                ✦ Shape the product · 2 min
+              </span>
+              <h2
+                style={{
+                  fontSize: "clamp(26px, 4vw, 38px)",
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
+                  lineHeight: 1.1,
+                  marginBottom: 14,
+                }}
+              >
+                Help us build <span className="grad-text">Cogni for you</span>
+              </h2>
+              <p style={{ fontSize: 16, color: "var(--text-dim)", lineHeight: 1.6, maxWidth: 460 }}>
+                We&apos;re a student team validating Cogni for the next exam season. Tell us how
+                you actually study — your answers directly shape what we build next.
+              </p>
+            </div>
+
+            <a
+              href="https://docs.google.com/forms/d/e/1FAIpQLSfSM6-Fjy5b0jBRbcJRY-U8rtFArtBmg54XYAlthqSHeQLBpQ/viewform"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "16px 30px",
+                background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+                color: "var(--bg)",
+                borderRadius: 12,
+                fontWeight: 700,
+                fontSize: 15,
+                letterSpacing: "-0.01em",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Take the survey →
+            </a>
           </div>
         </div>
       </section>

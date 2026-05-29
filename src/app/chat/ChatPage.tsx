@@ -36,7 +36,8 @@ export function ChatPage() {
   const [streamingContent, setStreamingContent] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(false); // history drawer (mobile)
+  const [rightOpen, setRightOpen] = useState(false); // model picker drawer (mobile)
 
   const { favorites, toggle } = useFavorites();
   const {
@@ -90,7 +91,7 @@ export function ChatPage() {
     (modelId: string) => {
       if (modelId === effectiveModelId) return;
       setSelectedModelId(modelId);
-      setSidebarOpen(false);
+      setRightOpen(false);
       if (activeId) {
         // Don't mix models in one thread — start fresh.
         setActiveId(null);
@@ -104,7 +105,7 @@ export function ChatPage() {
   const handleNewChat = useCallback(() => {
     setActiveId(null);
     setError("");
-    setSidebarOpen(false);
+    setLeftOpen(false);
   }, [setActiveId]);
 
   const handleSelectConversation = useCallback(
@@ -114,7 +115,7 @@ export function ChatPage() {
       const convo = conversations.find((c) => c.id === id);
       if (convo) setSelectedModelId(convo.modelId);
       setError("");
-      setSidebarOpen(false);
+      setLeftOpen(false);
     },
     [streaming, conversations, setActiveId]
   );
@@ -187,20 +188,20 @@ export function ChatPage() {
 
   return (
     <div style={{ display: "flex", height: "calc(100vh - 60px)", overflow: "hidden", position: "relative" }}>
-      {sidebarOpen && (
-        <div className="chat-overlay" onClick={() => setSidebarOpen(false)} aria-hidden="true" />
+      {(leftOpen || rightOpen) && (
+        <div
+          className="chat-overlay"
+          onClick={() => {
+            setLeftOpen(false);
+            setRightOpen(false);
+          }}
+          aria-hidden="true"
+        />
       )}
 
-      <aside className={`chat-sidebar${sidebarOpen ? " open" : ""}`} aria-label="Models and conversations">
-        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 16 }}>
-          <ModelSelector
-            models={models}
-            selectedModelId={effectiveModelId}
-            onSelect={handleSelectModel}
-            favorites={favorites}
-            onToggleFavorite={toggle}
-          />
-          <div style={{ height: 1, background: "var(--border)" }} aria-hidden="true" />
+      {/* LEFT — conversation history */}
+      <aside className={`chat-pane chat-pane-left${leftOpen ? " open" : ""}`} aria-label="Conversation history">
+        <div style={{ padding: 14 }}>
           <ConversationList
             conversations={conversations}
             activeId={activeId}
@@ -211,6 +212,7 @@ export function ChatPage() {
         </div>
       </aside>
 
+      {/* CENTER — chat thread */}
       <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {notice && (
           <div
@@ -237,10 +239,30 @@ export function ChatPage() {
             error={error}
             selectedModelLabel={selectedModelLabel}
             onSend={handleSend}
-            onToggleSidebar={() => setSidebarOpen((v) => !v)}
+            onToggleHistory={() => {
+              setLeftOpen((v) => !v);
+              setRightOpen(false);
+            }}
+            onToggleModels={() => {
+              setRightOpen((v) => !v);
+              setLeftOpen(false);
+            }}
           />
         </div>
       </section>
+
+      {/* RIGHT — AI model picker */}
+      <aside className={`chat-pane chat-pane-right${rightOpen ? " open" : ""}`} aria-label="AI model picker">
+        <div style={{ padding: 14 }}>
+          <ModelSelector
+            models={models}
+            selectedModelId={effectiveModelId}
+            onSelect={handleSelectModel}
+            favorites={favorites}
+            onToggleFavorite={toggle}
+          />
+        </div>
+      </aside>
     </div>
   );
 }

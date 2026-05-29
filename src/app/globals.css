@@ -26,6 +26,36 @@
   --duration-fast: 150ms;
   --duration-normal: 300ms;
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --nav-bg: rgba(10, 14, 26, 0.88);
+  color-scheme: dark;
+}
+
+/* ============================================================
+   Light theme — applied when <html data-theme="light">
+   User-selectable; default stays dark. Accent hues are deepened
+   for sufficient contrast on light surfaces.
+   ============================================================ */
+[data-theme="light"] {
+  --bg: #f6f8fd;
+  --bg-2: #eceff8;
+  --surface: #ffffff;
+  --surface-2: #f1f4fb;
+  --border: #e3e7f1;
+  --border-strong: #ccd3e5;
+  --text: #14182a;
+  --text-dim: #555f76;
+  --text-faint: #8a92a8;
+  --accent: #6b4eff;
+  --accent-2: #0d9488;
+  --accent-soft: rgba(107, 78, 255, 0.10);
+  --high: #e5484d;
+  --med: #c2710c;
+  --low: #2563eb;
+  --success: #0c9d61;
+
+  --nav-bg: rgba(246, 248, 253, 0.85);
+  color-scheme: light;
 }
 
 /* ============================================================
@@ -299,31 +329,32 @@
   .chat-hover-row .chat-hover-action { opacity: 1; }
 }
 
-.chat-sidebar {
+/* Two flanking panes: left = history, right = model picker */
+.chat-pane {
   width: 280px;
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--border);
   background: var(--bg);
 }
-.chat-thread-toggle { display: none; }
+.chat-pane-left { border-right: 1px solid var(--border); }
+.chat-pane-right { border-left: 1px solid var(--border); }
+.chat-pane-toggle { display: none; }
 .chat-overlay { display: none; }
 
-@media (max-width: 767px) {
-  .chat-sidebar {
+@media (max-width: 900px) {
+  .chat-pane {
     position: fixed;
     top: 60px;
-    left: 0;
     bottom: 0;
     z-index: 30;
-    transform: translateX(-100%);
     transition: transform var(--duration-normal) var(--ease-out-expo);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   }
-  .chat-sidebar.open {
-    transform: translateX(0);
-  }
-  .chat-thread-toggle {
+  .chat-pane-left { left: 0; transform: translateX(-100%); }
+  .chat-pane-right { right: 0; transform: translateX(100%); }
+  .chat-pane-left.open,
+  .chat-pane-right.open { transform: translateX(0); }
+  .chat-pane-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
