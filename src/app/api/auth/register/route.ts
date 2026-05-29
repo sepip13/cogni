@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { sendVerificationCode } from "@/lib/email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -35,28 +33,16 @@ export async function POST(req: NextRequest) {
   }
 
   const hashed = await bcrypt.hash(password, 12);
+  const now = new Date();
 
   if (existing && !existing.emailVerified) {
     await prisma.user.update({
       where: { id: existing.id },
-      data: { password: hashed, name },
+      data: { password: hashed, name, emailVerified: now },
     });
   } else {
-    await prisma.user.create({ data: { email, name, password: hashed } });
+    await prisma.user.create({ data: { email, name, password: hashed, emailVerified: now } });
   }
 
-  const code = crypto.randomInt(100000, 999999).toString();
-  const expires = new Date(Date.now() + 10 * 60 * 1000);
-
-  await prisma.verificationToken.deleteMany({ where: { identifier: email } });
-  await prisma.verificationToken.create({
-    data: { identifier: email, token: code, expires },
-  });
-
-  const sent = await sendVerificationCode(email, code);
-  if (!sent) {
-    return NextResponse.json({ error: "Failed to send verification email. Try again." }, { status: 500 });
-  }
-
-  return NextResponse.json({ ok: true, needsVerification: true }, { status: 201 });
+  return NextResponse.json({ ok: true, needsVerification: false }, { status: 201 });
 }
