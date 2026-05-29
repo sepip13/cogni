@@ -15,7 +15,9 @@ interface ConversationListProps {
 // `now` is captured once at mount by the caller so render stays pure.
 function relativeTime(ts: number, now: number): string {
   const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  const seconds = Math.round((ts - now) / 1000);
+  // Conversations are never in the future; clamp so a just-created chat (whose
+  // updatedAt can edge past the mount-time `now`) reads "now", not "in 5s".
+  const seconds = Math.min(0, Math.round((ts - now) / 1000));
   const abs = Math.abs(seconds);
   if (abs < 60) return rtf.format(seconds, "second");
   const minutes = Math.round(seconds / 60);
