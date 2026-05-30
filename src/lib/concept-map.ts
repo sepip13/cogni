@@ -15,13 +15,17 @@
 import { freeLLMComplete } from "@/lib/freellm";
 import { z } from "zod";
 
-const CHUNK_CHARS = 45_000;
-const MAX_CHUNKS = 8; // up to ~360k chars analyzed
+// The free proxy is slow and gets slower under concurrency, but a single call
+// on a normal-sized course is reliable. So fit most courses in ONE call and
+// only chunk genuinely huge ones, with low concurrency + a retry.
+const CHUNK_CHARS = 150_000; // ~38k tokens — most courses = 1 reliable call
+const MAX_CHUNKS = 6; // up to ~900k chars analyzed
 const MAX_NODES = 28;
 const MAX_CLUSTERS = 8;
-const CONCURRENCY = 3;
-const EXTRACT_TIMEOUT_MS = 150_000;
+const CONCURRENCY = 2;
+const EXTRACT_TIMEOUT_MS = 240_000;
 const EXTRACT_MAX_TOKENS = 4000;
+const EXTRACT_ATTEMPTS = 2; // one retry on a slow/garbled response
 
 export type MapNode = {
   id: string;
@@ -121,18 +125,25 @@ async function extractChunk(
   topicHints: string,
   model: string
 ): Promise<Extract | null> {
-  try {
-    const raw = await freeLLMComplete(
-      [
-        { role: "system", content: extractSystem(courseName, level) },
-        { role: "user", content: `<material_portion>\n${chunk}\n</material_portion>\n\n<course_emphasis>\n${topicHints}\n</course_emphasis>` },
-      ],
-      { model, jsonMode: true, temperature: 0.2, maxTokens: EXTRACT_MAX_TOKENS, timeoutMs: EXTRACT_TIMEOUT_MS }
-    );
-    return ExtractSchema.parse(parseLoose(raw));
-  } catch {
-    return null;
+  const messages = [
+    { role: "system" as const, content: extractSystem(courseName, level) },
+    { role: "user" as const, content: `<material_portion>\n${chunk}\n</material_portion>\n\n<course_emphasis>\n${topicHints}\n</course_emphasis>` },
+  ];
+  for (let attempt = 0; attempt < EXTRACT_ATTEMPTS; attempt++) {
+    try {
+      const raw = await freeLLMComplete(messages, {
+        model,
+        jsonMode: true,
+        temperature: 0.2,
+        maxTokens: EXTRACT_MAX_TOKENS,
+        timeoutMs: EXTRACT_TIMEOUT_MS,
+      });
+      return ExtractSchema.parse(parseLoose(raw));
+    } catch {
+      // retry once on timeout / garbled JSON
+    }
   }
+  return null;
 }
 
 // ── Stage 2: merge + assemble (pure code, no LLM) ─────────────────────────────
