@@ -11,8 +11,9 @@ export const maxDuration = 300;
 
 const TEMPERATURE = 0.2;
 const MAX_TOKENS = 8000;
-const MAX_MATERIAL_CHARS = 200_000;
+const MAX_MATERIAL_CHARS = 140_000;
 const MAX_NODES = 30;
+const CONCEPT_MAP_TIMEOUT_MS = 240_000; // heavy call — large input + big JSON
 const GUIDE_LIMIT = { max: 10, windowMs: 60 * 60 * 1000 }; // 10 / hour / user
 
 const MindMapSchema = z.object({
@@ -209,7 +210,7 @@ async function buildConceptMap(guideId: string, course: CourseForMap, model: str
         { role: "system", content: buildSystemPrompt(course.name, course.educationLevel) },
         { role: "user", content: buildUserMessage(course) },
       ],
-      { temperature: TEMPERATURE, jsonMode: true, model, maxTokens: MAX_TOKENS }
+      { temperature: TEMPERATURE, jsonMode: true, model, maxTokens: MAX_TOKENS, timeoutMs: CONCEPT_MAP_TIMEOUT_MS }
     );
 
     const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();

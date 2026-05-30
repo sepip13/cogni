@@ -40,7 +40,7 @@ interface ChatMessage {
 
 export async function freeLLMComplete(
   messages: ChatMessage[],
-  opts: { model?: string; maxTokens?: number; temperature?: number; jsonMode?: boolean } = {}
+  opts: { model?: string; maxTokens?: number; temperature?: number; jsonMode?: boolean; timeoutMs?: number } = {}
 ): Promise<string> {
   if (!FREELLMAPI_URL || !FREELLMAPI_KEY) {
     throw new Error("FreeLLMAPI not configured (FREELLMAPI_URL / FREELLMAPI_KEY missing)");
@@ -69,7 +69,7 @@ export async function freeLLMComplete(
           "content-type": "application/json",
           "authorization": `Bearer ${FREELLMAPI_KEY}`,
         },
-        timeout: 60_000,
+        timeout: opts.timeoutMs ?? 60_000,
       },
       (res) => {
         const chunks: Buffer[] = [];

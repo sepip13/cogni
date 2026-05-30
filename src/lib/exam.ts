@@ -11,6 +11,8 @@ import { z } from "zod";
 const MAX_TRIAL_CHARS = 30_000;
 const MAX_MATERIAL_CHARS = 60_000;
 const MAX_QUESTIONS = 40;
+const SPLIT_TIMEOUT_MS = 120_000;
+const MOCK_TIMEOUT_MS = 180_000;
 
 function stripFences(raw: string): string {
   return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
@@ -51,7 +53,7 @@ export async function splitTrialQuestions(trialId: string, model: string): Promi
         { role: "system", content: splitSystem(trial.course.name) },
         { role: "user", content: text.slice(0, MAX_TRIAL_CHARS) },
       ],
-      { model, jsonMode: true, temperature: 0.1, maxTokens: 4000 }
+      { model, jsonMode: true, temperature: 0.1, maxTokens: 4000, timeoutMs: SPLIT_TIMEOUT_MS }
     );
     const parsed = SplitSchema.parse(JSON.parse(stripFences(raw)));
     const questions = parsed.questions.slice(0, MAX_QUESTIONS);
@@ -123,7 +125,7 @@ ${(mock.trial.course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS)}
         { role: "system", content: mockSystem(mock.trial.course.name, count) },
         { role: "user", content: userMessage },
       ],
-      { model, jsonMode: true, temperature: 0.4, maxTokens: 6000 }
+      { model, jsonMode: true, temperature: 0.4, maxTokens: 6000, timeoutMs: MOCK_TIMEOUT_MS }
     );
     const parsed = MockSchema.parse(JSON.parse(stripFences(raw)));
 

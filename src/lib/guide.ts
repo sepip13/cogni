@@ -14,6 +14,7 @@ const MAX_SLICE_CHARS = 9000;
 const MAX_TOKENS = 2400;
 const TEMPERATURE = 0.4;
 const MAX_CONTENT_CHARS = 16_000;
+const SECTION_TIMEOUT_MS = 120_000;
 
 interface MapNode {
   id: string;
@@ -138,7 +139,7 @@ ${slices}
         { role: "system", content: buildSystemPrompt(section.guide.course.name, lang) },
         { role: "user", content: userMessage },
       ],
-      { model, temperature: TEMPERATURE, maxTokens: MAX_TOKENS }
+      { model, temperature: TEMPERATURE, maxTokens: MAX_TOKENS, timeoutMs: SECTION_TIMEOUT_MS }
     );
 
     await prisma.studyGuideSection.update({
