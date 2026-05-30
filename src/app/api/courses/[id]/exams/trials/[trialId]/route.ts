@@ -1,6 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { resolveLargeContextModel } from "@/lib/freellm";
+import { splitTrialQuestions } from "@/lib/exam";
+import { isProUser } from "@/lib/plan";
+import { rateLimit } from "@/lib/rate-limit";
+
+export const maxDuration = 300;
+
+const RESPLIT_LIMIT = { max: 15, windowMs: 10 * 60 * 1000 };
 
 type Params = { params: Promise<{ id: string; trialId: string }> };
 
@@ -52,4 +60,41 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   await prisma.examTrial.delete({ where: { id: trialId } });
   return NextResponse.json({ deleted: true });
+}
+
+// Re-run the split for a trial that failed (without re-uploading).
+export async function POST(_req: NextRequest, { params }: Params) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = session.user.id;
+  const { id: courseId, trialId } = await params;
+
+  const trial = await prisma.examTrial.findUnique({
+    where: { id: trialId },
+    select: { courseId: true, userId: true, parsedText: true, course: { select: { userId: true } } },
+  });
+  if (!trial || trial.courseId !== courseId || trial.userId !== userId || trial.course.userId !== userId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!(trial.parsedText ?? "").trim()) {
+    return NextResponse.json({ error: "No readable content — please re-upload the exam." }, { status: 400 });
+  }
+
+  const limit = rateLimit(`resplit:${userId}`, RESPLIT_LIMIT);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Please wait a moment before trying again." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
+
+  const model = resolveLargeContextModel(await isProUser(userId));
+  await prisma.examTrial.update({ where: { id: trialId }, data: { status: "PARSING", error: null } });
+  after(async () => {
+    await splitTrialQuestions(trialId, model);
+  });
+
+  return NextResponse.json({ ok: true }, { status: 202 });
 }

@@ -14,7 +14,7 @@ const MAX_SLICE_CHARS = 9000;
 const MAX_TOKENS = 2400;
 const TEMPERATURE = 0.4;
 const MAX_CONTENT_CHARS = 16_000;
-const SECTION_TIMEOUT_MS = 120_000;
+const SECTION_TIMEOUT_MS = 180_000;
 
 interface MapNode {
   id: string;
@@ -134,13 +134,21 @@ Related concepts to connect to: ${neighbors.map((n) => n.label).join(", ") || "n
 ${slices}
 </material>`;
 
-    const md = await freeLLMComplete(
-      [
-        { role: "system", content: buildSystemPrompt(section.guide.course.name, lang) },
-        { role: "user", content: userMessage },
-      ],
-      { model, temperature: TEMPERATURE, maxTokens: MAX_TOKENS, timeoutMs: SECTION_TIMEOUT_MS }
-    );
+    let md = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        md = await freeLLMComplete(
+          [
+            { role: "system", content: buildSystemPrompt(section.guide.course.name, lang) },
+            { role: "user", content: userMessage },
+          ],
+          { model, temperature: TEMPERATURE, maxTokens: MAX_TOKENS, timeoutMs: SECTION_TIMEOUT_MS }
+        );
+        break;
+      } catch (e) {
+        if (attempt === 1) throw e; // one retry on a slow/garbled response
+      }
+    }
 
     await prisma.studyGuideSection.update({
       where: { id: sectionId },

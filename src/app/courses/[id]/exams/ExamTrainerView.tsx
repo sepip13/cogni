@@ -58,6 +58,15 @@ export function ExamTrainerView({ courseId, courseName }: { courseId: string; co
     fetch(`/api/courses/${courseId}/exams/trials/${trialId}`, { method: "DELETE" }).catch(() => fetchTrials());
   }
 
+  function retryTrial(trialId: string) {
+    setTrials((prev) =>
+      prev ? prev.map((t) => (t.id === trialId ? { ...t, status: "PARSING", error: null } : t)) : prev
+    );
+    fetch(`/api/courses/${courseId}/exams/trials/${trialId}`, { method: "POST" })
+      .then(() => fetchTrials())
+      .catch(() => {});
+  }
+
   return (
     <div className="fade-in">
       <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-dim)", marginBottom: 22, flexWrap: "wrap" }}>
@@ -106,7 +115,7 @@ export function ExamTrainerView({ courseId, courseName }: { courseId: string; co
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {trials.map((t) => (
-            <TrialCard key={t.id} courseId={courseId} trial={t} onGenerateMock={generateMock} onDelete={deleteTrial} />
+            <TrialCard key={t.id} courseId={courseId} trial={t} onGenerateMock={generateMock} onDelete={deleteTrial} onRetry={retryTrial} />
           ))}
         </div>
       )}

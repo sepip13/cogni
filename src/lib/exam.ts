@@ -11,8 +11,24 @@ import { z } from "zod";
 const MAX_TRIAL_CHARS = 30_000;
 const MAX_MATERIAL_CHARS = 60_000;
 const MAX_QUESTIONS = 40;
-const SPLIT_TIMEOUT_MS = 120_000;
-const MOCK_TIMEOUT_MS = 180_000;
+// The free proxy is slow and variable, so give heavy calls a generous timeout
+// and one retry (these run in the background, so a long wait is fine).
+const SPLIT_TIMEOUT_MS = 240_000;
+const MOCK_TIMEOUT_MS = 240_000;
+const ATTEMPTS = 2;
+
+/** Runs `fn`, retrying once on any failure (slow proxy / garbled JSON). */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < ATTEMPTS; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Failed after retries");
+}
 
 function stripFences(raw: string): string {
   const s = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
@@ -53,16 +69,19 @@ export async function splitTrialQuestions(trialId: string, model: string): Promi
     const text = (trial.parsedText ?? "").trim();
     if (!text) throw new Error("No readable content in this exam file.");
 
-    const raw = await freeLLMComplete(
-      [
-        { role: "system", content: splitSystem(trial.course.name) },
-        { role: "user", content: text.slice(0, MAX_TRIAL_CHARS) },
-      ],
-      { model, jsonMode: true, temperature: 0.1, maxTokens: 4000, timeoutMs: SPLIT_TIMEOUT_MS }
-    );
-    const parsed = SplitSchema.parse(JSON.parse(stripFences(raw)));
-    const questions = parsed.questions.slice(0, MAX_QUESTIONS);
-    if (questions.length === 0) throw new Error("Couldn't find any questions in this file.");
+    const questions = await withRetry(async () => {
+      const raw = await freeLLMComplete(
+        [
+          { role: "system", content: splitSystem(trial.course.name) },
+          { role: "user", content: text.slice(0, MAX_TRIAL_CHARS) },
+        ],
+        { model, jsonMode: true, temperature: 0.1, maxTokens: 4000, timeoutMs: SPLIT_TIMEOUT_MS }
+      );
+      const parsed = SplitSchema.parse(JSON.parse(stripFences(raw)));
+      const qs = parsed.questions.slice(0, MAX_QUESTIONS);
+      if (qs.length === 0) throw new Error("Couldn't find any questions in this file.");
+      return qs;
+    });
 
     await prisma.examTrial.update({
       where: { id: trialId },
@@ -115,24 +134,28 @@ export async function generateMockExam(mockId: string, model: string, count: num
     return;
   }
 
+  const trial = mock.trial;
+
   try {
-    const trialQs = Array.isArray(mock.trial.questions) ? mock.trial.questions : [];
+    const trialQs = Array.isArray(trial.questions) ? trial.questions : [];
     const userMessage = `Trial exam questions (style reference):
 ${JSON.stringify(trialQs).slice(0, MAX_TRIAL_CHARS)}
 
 Course material:
 <material>
-${(mock.trial.course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS)}
+${(trial.course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS)}
 </material>`;
 
-    const raw = await freeLLMComplete(
-      [
-        { role: "system", content: mockSystem(mock.trial.course.name, count) },
-        { role: "user", content: userMessage },
-      ],
-      { model, jsonMode: true, temperature: 0.4, maxTokens: 6000, timeoutMs: MOCK_TIMEOUT_MS }
-    );
-    const parsed = MockSchema.parse(JSON.parse(stripFences(raw)));
+    const parsed = await withRetry(async () => {
+      const raw = await freeLLMComplete(
+        [
+          { role: "system", content: mockSystem(trial.course.name, count) },
+          { role: "user", content: userMessage },
+        ],
+        { model, jsonMode: true, temperature: 0.4, maxTokens: 6000, timeoutMs: MOCK_TIMEOUT_MS }
+      );
+      return MockSchema.parse(JSON.parse(stripFences(raw)));
+    });
 
     await prisma.mockExam.update({
       where: { id: mockId },

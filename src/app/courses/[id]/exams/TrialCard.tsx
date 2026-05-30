@@ -28,11 +28,13 @@ export function TrialCard({
   trial,
   onGenerateMock,
   onDelete,
+  onRetry,
 }: {
   courseId: string;
   trial: ExamTrialData;
   onGenerateMock: (trialId: string, count: number) => void;
   onDelete: (trialId: string) => void;
+  onRetry: (trialId: string) => void;
 }) {
   const questions = trial.questions ?? [];
   const [openExplain, setOpenExplain] = useState<number | null>(null);
@@ -57,7 +59,17 @@ export function TrialCard({
       )}
 
       {trial.status === "FAILED" && (
-        <p style={{ fontSize: 13, color: "var(--high)" }}>{trial.error || "Couldn't read this exam. Try a clearer file or paste the text."}</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <p style={{ fontSize: 13, color: "var(--high)", flex: 1, minWidth: 0 }}>
+            {trial.error || "Couldn't read this exam. Try a clearer file or paste the text."}
+          </p>
+          <button
+            onClick={() => onRetry(trial.id)}
+            style={{ padding: "8px 16px", background: "linear-gradient(135deg, var(--accent), var(--accent-2))", color: "var(--bg)", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+          >
+            Try again
+          </button>
+        </div>
       )}
 
       {trial.status === "READY" && (
