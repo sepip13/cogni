@@ -99,6 +99,109 @@ export interface VivaGrade {
 
 // ── Sharing ───────────────────────────────────────────────────────────────
 
+// ── Study guide / mind map ────────────────────────────────────────────────
+
+export interface MindMapNode {
+  id: string;
+  label: string;
+  summary: string;
+  examImportance: number;
+  learningImportance: number;
+  cluster: string;
+  sourceRefs?: { page?: string | number }[];
+}
+
+export interface MindMapEdge {
+  from: string;
+  to: string;
+  type: "prerequisite" | "related" | "contrast" | "example_of";
+  label?: string;
+}
+
+export interface MindMapCluster {
+  id: string;
+  title: string;
+  theme?: string;
+}
+
+export interface MindMap {
+  nodes: MindMapNode[];
+  edges: MindMapEdge[];
+  clusters: MindMapCluster[];
+}
+
+export type GuideStatus = "ANALYZING" | "MAP_READY" | "GENERATING" | "READY" | "FAILED";
+export type GuideSectionStatus = "PENDING" | "GENERATING" | "READY" | "FAILED";
+
+export interface GuideSection {
+  id: string;
+  order: number;
+  conceptKey: string;
+  title: string;
+  status: GuideSectionStatus;
+  contentMd: string | null;
+}
+
+export interface StudyGuideData {
+  id: string;
+  status: GuideStatus;
+  language: string | null;
+  mindMap: MindMap | null;
+  outline: string[] | null;
+  error: string | null;
+  updatedAt: string;
+  sections: GuideSection[];
+}
+
+// ── Exam trainer ──────────────────────────────────────────────────────────
+
+export type TrialStatus = "PARSING" | "READY" | "FAILED";
+export type MockStatus = "GENERATING" | "READY" | "FAILED";
+
+export interface TrialQuestion {
+  num?: string;
+  text: string;
+  type?: string;
+  marks?: number | null;
+}
+
+export interface MockExamQuestion {
+  q: string;
+  type?: string;
+  marks?: number | null;
+  source?: string;
+  expected_answer?: string;
+  key_points?: string[];
+}
+
+export interface MockExamSummary {
+  id: string;
+  title: string;
+  status: MockStatus;
+  questions: MockExamQuestion[] | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface ExamTrialData {
+  id: string;
+  title: string;
+  status: TrialStatus;
+  fileName: string | null;
+  questions: TrialQuestion[] | null;
+  error: string | null;
+  createdAt: string;
+  mockExams: MockExamSummary[];
+}
+
+export interface ExamGrade {
+  score: number;
+  verdict: "correct" | "partially_correct" | "incorrect";
+  feedback: string;
+  missing_points: string[];
+  strengths: string[];
+}
+
 export type SharePermission = "VIEW" | "COMMENT";
 
 export interface ShareLink {

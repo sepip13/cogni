@@ -1,0 +1,352 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { MindMapGraph } from "./MindMapGraph";
+import { GuideReader } from "./GuideReader";
+import type { GuideSection, MindMap, MindMapNode, StudyGuideData } from "../types";
+
+const POLL_MS = 2500;
+const CLUSTER_COLORS = [
+  "var(--accent)",
+  "var(--accent-2)",
+  "var(--low)",
+  "var(--med)",
+  "var(--success)",
+  "var(--high)",
+];
+
+function clusterColorMap(mindMap: MindMap): Map<string, string> {
+  const ids = Array.from(
+    new Set(mindMap.clusters.map((c) => c.id).concat(mindMap.nodes.map((n) => n.cluster)))
+  );
+  const map = new Map<string, string>();
+  ids.forEach((id, i) => map.set(id, CLUSTER_COLORS[i % CLUSTER_COLORS.length]));
+  return map;
+}
+
+function ImportanceBar({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+      <span style={{ width: 56, color: "var(--text-dim)" }}>{label}</span>
+      <div style={{ display: "flex", gap: 3 }}>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <span
+            key={i}
+            style={{
+              width: 14,
+              height: 6,
+              borderRadius: 2,
+              background: i <= value ? color : "var(--surface-2)",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConceptAction({
+  section,
+  onGenerate,
+  onJump,
+}: {
+  section: GuideSection | undefined;
+  onGenerate: (id: string) => void;
+  onJump: (conceptKey: string) => void;
+}) {
+  if (!section) return null;
+  const base: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 14px",
+    borderRadius: 9,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    border: "none",
+  };
+  if (section.status === "READY") {
+    return (
+      <button onClick={() => onJump(section.conceptKey)} style={{ ...base, background: "var(--surface-2)", border: "1px solid var(--border-strong)", color: "var(--text)" }}>
+        Read this part ↓
+      </button>
+    );
+  }
+  if (section.status === "GENERATING") {
+    return <button disabled style={{ ...base, background: "var(--surface-2)", color: "var(--text-dim)", cursor: "default" }}>Writing this part…</button>;
+  }
+  return (
+    <button onClick={() => onGenerate(section.id)} style={{ ...base, background: "linear-gradient(135deg, var(--accent), var(--accent-2))", color: "var(--bg)" }}>
+      {section.status === "FAILED" ? "Try again" : "Generate this part"}
+    </button>
+  );
+}
+
+function ConceptDetail({
+  node,
+  color,
+  clusterTitle,
+  section,
+  onGenerate,
+  onJump,
+}: {
+  node: MindMapNode;
+  color: string;
+  clusterTitle: string;
+  section: GuideSection | undefined;
+  onGenerate: (id: string) => void;
+  onJump: (conceptKey: string) => void;
+}) {
+  const pages = (node.sourceRefs ?? []).map((s) => s.page).filter(Boolean);
+  return (
+    <div className="fade-in">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ width: 10, height: 10, borderRadius: "50%", background: color, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-faint)" }}>
+          {clusterTitle}
+        </span>
+      </div>
+      <h3 style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", marginBottom: 8 }}>{node.label}</h3>
+      <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6, marginBottom: 16 }}>{node.summary}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+        <ImportanceBar label="Exam" value={node.examImportance} color="var(--high)" />
+        <ImportanceBar label="Learning" value={node.learningImportance} color="var(--accent)" />
+      </div>
+      {pages.length > 0 && (
+        <p style={{ fontSize: 12, color: "var(--text-faint)", fontFamily: "var(--font-jetbrains), monospace", marginBottom: 14 }}>
+          Source: p.{pages.join(", ")}
+        </p>
+      )}
+      <ConceptAction section={section} onGenerate={onGenerate} onJump={onJump} />
+    </div>
+  );
+}
+
+function CenterState({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ maxWidth: 480, margin: "60px auto 0", textAlign: "center" }}>{children}</div>
+  );
+}
+
+export function StudyGuideView({ courseId, courseName }: { courseId: string; courseName: string }) {
+  const [guide, setGuide] = useState<StudyGuideData | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchGuide = useCallback(() => {
+    return fetch(`/api/courses/${courseId}/guide`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ guide: StudyGuideData | null }>) : Promise.reject()))
+      .then((d) => setGuide(d.guide))
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, [courseId]);
+
+  useEffect(() => {
+    fetchGuide();
+  }, [fetchGuide]);
+
+  // Poll while the map is being built OR any section is being written.
+  const busy =
+    guide?.status === "ANALYZING" || (guide?.sections.some((s) => s.status === "GENERATING") ?? false);
+  useEffect(() => {
+    if (!busy) return;
+    pollRef.current = setInterval(fetchGuide, POLL_MS);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [busy, fetchGuide]);
+
+  function generate(sectionId: string) {
+    setGuide((g) =>
+      g
+        ? { ...g, sections: g.sections.map((s) => (s.id === sectionId ? { ...s, status: "GENERATING" } : s)) }
+        : g
+    );
+    fetch(`/api/courses/${courseId}/guide/sections/${sectionId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then(() => fetchGuide())
+      .catch(() => {});
+  }
+
+  function jumpTo(conceptKey: string) {
+    requestAnimationFrame(() => {
+      document.getElementById(`section-${conceptKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function create() {
+    setCreating(true);
+    setError("");
+    fetch(`/api/courses/${courseId}/guide`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then(async (r) => {
+        if (!r.ok) {
+          const b = (await r.json().catch(() => ({}))) as { error?: string };
+          setError(b.error ?? "Could not start the study guide.");
+          return;
+        }
+        setGuide((g) => (g ? { ...g, status: "ANALYZING", error: null } : { id: "", status: "ANALYZING", language: null, mindMap: null, outline: null, error: null, updatedAt: "", sections: [] }));
+      })
+      .catch(() => setError("Network error — please try again."))
+      .finally(() => setCreating(false));
+  }
+
+  const crumb = (
+    <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-dim)", marginBottom: 22, flexWrap: "wrap" }}>
+      <Link href="/dashboard" style={{ color: "var(--text-dim)" }}>My courses</Link>
+      <span aria-hidden="true" style={{ color: "var(--text-faint)" }}>›</span>
+      <Link href={`/courses/${courseId}`} style={{ color: "var(--text-dim)" }}>{courseName}</Link>
+      <span aria-hidden="true" style={{ color: "var(--text-faint)" }}>›</span>
+      <span style={{ color: "var(--text)" }} aria-current="page">Study guide</span>
+    </nav>
+  );
+
+  if (!loaded) {
+    return <div className="skeleton" style={{ height: 320, borderRadius: 16, marginTop: 40 }} aria-busy="true" />;
+  }
+
+  // No guide yet, or never built.
+  if (!guide || (guide.status !== "ANALYZING" && !guide.mindMap && guide.status !== "FAILED")) {
+    return (
+      <div className="fade-in">
+        {crumb}
+        <CenterState>
+          <div style={{ fontSize: 40, marginBottom: 14 }} aria-hidden="true">🧠</div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 10 }}>Build your study guide</h1>
+          <p style={{ fontSize: 14, color: "var(--text-dim)", lineHeight: 1.6, marginBottom: 22 }}>
+            Cogni reads all your material, maps how the concepts connect, and shows you what matters
+            most — for the exam and for really understanding it. Start with the concept map.
+          </p>
+          {error && <p style={{ fontSize: 13, color: "var(--high)", marginBottom: 14 }}>{error}</p>}
+          <button
+            onClick={create}
+            disabled={creating}
+            style={{
+              padding: "13px 28px",
+              background: creating ? "var(--surface-2)" : "linear-gradient(135deg, var(--accent), var(--accent-2))",
+              color: creating ? "var(--text-dim)" : "var(--bg)",
+              border: "none",
+              borderRadius: 11,
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: creating ? "default" : "pointer",
+            }}
+            aria-busy={creating}
+          >
+            {creating ? "Starting…" : "Create my study guide"}
+          </button>
+        </CenterState>
+      </div>
+    );
+  }
+
+  if (guide.status === "ANALYZING") {
+    return (
+      <div className="fade-in">
+        {crumb}
+        <CenterState>
+          <div className="pulse-glow" style={{ width: 64, height: 64, margin: "0 auto 20px", borderRadius: 18, background: "linear-gradient(135deg, var(--accent), var(--accent-2))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }} aria-hidden="true">🧠</div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Mapping your concepts…</h1>
+          <p style={{ fontSize: 14, color: "var(--text-dim)", lineHeight: 1.6 }}>
+            Reading the material and working out how everything fits together. This takes a moment.
+          </p>
+        </CenterState>
+      </div>
+    );
+  }
+
+  if (guide.status === "FAILED") {
+    return (
+      <div className="fade-in">
+        {crumb}
+        <CenterState>
+          <div style={{ fontSize: 36, marginBottom: 14 }} aria-hidden="true">⚠️</div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>Couldn&apos;t build the map</h1>
+          <p style={{ fontSize: 14, color: "var(--text-dim)", marginBottom: 20 }}>{guide.error || "Something went wrong. Try again."}</p>
+          <button onClick={create} disabled={creating} style={{ padding: "12px 24px", background: "linear-gradient(135deg, var(--accent), var(--accent-2))", color: "var(--bg)", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+            {creating ? "Retrying…" : "Try again"}
+          </button>
+        </CenterState>
+      </div>
+    );
+  }
+
+  // MAP_READY / GENERATING / READY → show the graph.
+  const mindMap = guide.mindMap as MindMap;
+  const colors = clusterColorMap(mindMap);
+  const sectionByKey = new Map(guide.sections.map((s) => [s.conceptKey, s]));
+  const selected = selectedId ? mindMap.nodes.find((n) => n.id === selectedId) ?? null : null;
+  const selectedClusterTitle = selected
+    ? mindMap.clusters.find((c) => c.id === selected.cluster)?.title ?? selected.cluster
+    : "";
+
+  return (
+    <div className="fade-in">
+      {crumb}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start", marginBottom: 20 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", marginBottom: 6 }}>Study guide</h1>
+          <p style={{ fontSize: 14, color: "var(--text-dim)" }}>
+            {mindMap.nodes.length} concepts · {mindMap.clusters.length} clusters
+            {guide.language ? ` · ${guide.language}` : ""} · tap a concept to explore
+          </p>
+        </div>
+        <button onClick={create} disabled={creating} style={{ padding: "9px 18px", background: "var(--surface-2)", border: "1px solid var(--border-strong)", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "var(--text)", cursor: "pointer", whiteSpace: "nowrap" }}>
+          {creating ? "Rebuilding…" : "Rebuild map"}
+        </button>
+      </div>
+
+      <div className="topic-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+        {/* Graph */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 8, overflow: "hidden" }}>
+          <MindMapGraph mindMap={mindMap} selectedId={selectedId} onSelect={setSelectedId} />
+        </div>
+
+        {/* Side: detail + legend */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 20, minHeight: 160 }}>
+            {selected ? (
+              <ConceptDetail
+                node={selected}
+                color={colors.get(selected.cluster) ?? "var(--accent)"}
+                clusterTitle={selectedClusterTitle}
+                section={sectionByKey.get(selected.id)}
+                onGenerate={generate}
+                onJump={jumpTo}
+              />
+            ) : (
+              <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6, paddingTop: 8 }}>
+                <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Explore the map</div>
+                Bigger circles matter more. Lines show how concepts connect. Tap any concept to see why
+                it matters and where it&apos;s covered.
+              </div>
+            )}
+          </div>
+
+          {mindMap.clusters.length > 0 && (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-faint)", marginBottom: 10 }}>
+                Clusters
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {mindMap.clusters.map((c) => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13 }}>
+                    <span style={{ width: 11, height: 11, borderRadius: 3, background: colors.get(c.id) ?? "var(--accent)", flexShrink: 0 }} />
+                    <span style={{ color: "var(--text)" }}>{c.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <GuideReader sections={guide.sections} onGenerate={generate} />
+    </div>
+  );
+}

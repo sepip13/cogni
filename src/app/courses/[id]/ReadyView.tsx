@@ -150,6 +150,36 @@ export function ReadyView({ course }: { course: CourseData }) {
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link
+            href={`/courses/${course.id}/guide`}
+            style={{
+              padding: "9px 18px",
+              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
+              border: "1px solid transparent",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 700,
+              color: "var(--bg)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            🧠 Study guide
+          </Link>
+          <Link
+            href={`/courses/${course.id}/exams`}
+            style={{
+              padding: "9px 18px",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--text)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            📝 Exam trainer
+          </Link>
           <button
             onClick={() => setShareOpen(true)}
             style={{

@@ -85,6 +85,9 @@ model Course {
   chatMessages         ChatMessage[]
   shares               CourseShare[]
   submissions          Submission[]
+  studyGuide           StudyGuide?
+  examTrials           ExamTrial[]
+  mockExams            MockExam[]
 }
 
 enum CourseStatus {
@@ -272,4 +275,113 @@ model SubmissionReview {
   createdAt       DateTime   @default(now())
 
   @@index([submissionId])
+}
+
+// ── Study guide (concept map + progressive sections) ──────────
+model StudyGuide {
+  id        String              @id @default(cuid())
+  courseId  String              @unique
+  course    Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  status    GuideStatus         @default(ANALYZING)
+  language  String?
+  mindMap   Json?               // { nodes[], edges[], clusters[] }
+  outline   Json?               // ordered conceptIds → sections (teaching order)
+  modelId   String?
+  error     String?             @db.Text
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  sections  StudyGuideSection[]
+}
+
+enum GuideStatus {
+  ANALYZING
+  MAP_READY
+  GENERATING
+  READY
+  FAILED
+}
+
+model StudyGuideSection {
+  id          String        @id @default(cuid())
+  guideId     String
+  guide       StudyGuide    @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  order       Int
+  conceptKey  String
+  title       String
+  status      SectionStatus @default(PENDING)
+  contentMd   String?       @db.Text
+  sources     Json?
+  modelId     String?
+  generatedAt DateTime?
+
+  @@index([guideId])
+}
+
+enum SectionStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+}
+
+// ── Exam trainer (trial → split questions → similar exam + per-question explain) ──
+model ExamTrial {
+  id         String               @id @default(cuid())
+  courseId   String
+  course     Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId     String
+  title      String
+  status     TrialStatus          @default(PARSING)
+  fileName   String?
+  fileType   String?
+  blobUrl    String?
+  parsedText String?              @db.Text
+  questions  Json? // [{ num, text, type, marks }]
+  error      String?              @db.Text
+  createdAt  DateTime             @default(now())
+  mockExams  MockExam[]
+  messages   ExamExplainMessage[]
+
+  @@index([courseId])
+}
+
+enum TrialStatus {
+  PARSING
+  READY
+  FAILED
+}
+
+model MockExam {
+  id        String     @id @default(cuid())
+  courseId  String
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  trialId   String?
+  trial     ExamTrial? @relation(fields: [trialId], references: [id], onDelete: SetNull)
+  title     String
+  status    MockStatus @default(GENERATING)
+  questions Json // [{ q, type, marks, source, expected_answer, key_points }]
+  modelId   String?
+  error     String?    @db.Text
+  createdAt DateTime   @default(now())
+
+  @@index([courseId])
+  @@index([trialId])
+}
+
+enum MockStatus {
+  GENERATING
+  READY
+  FAILED
+}
+
+model ExamExplainMessage {
+  id        String    @id @default(cuid())
+  trialId   String
+  trial     ExamTrial @relation(fields: [trialId], references: [id], onDelete: Cascade)
+  qIndex    Int
+  role      String
+  content   String    @db.Text
+  createdAt DateTime  @default(now())
+
+  @@index([trialId, qIndex])
 }

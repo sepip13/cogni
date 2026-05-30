@@ -17,6 +17,22 @@ export function resolveModelForPlan(isPro: boolean, requested?: string | null): 
   return r && r !== "auto" ? r : PRO_MODEL;
 }
 
+// Large-context model for the FREE tier (study guide analysis needs to fit big
+// inputs). gemini-2.5-flash is a free, 1M-context model — far better than the
+// router's "auto" which may pick a small-context model.
+const FREE_LARGE_MODEL = process.env.FREELLMAPI_FREE_LARGE_MODEL ?? "gemini-2.5-flash";
+
+/**
+ * Picks the largest-context model available in the caller's tier — used by the
+ * study-guide/exam features where the whole course material must fit in context.
+ * FREE → `FREE_LARGE_MODEL`; PRO → `PRO_MODEL` (or the user's explicit choice).
+ */
+export function resolveLargeContextModel(isPro: boolean, requested?: string | null): string {
+  if (!isPro) return FREE_LARGE_MODEL;
+  const r = requested?.trim();
+  return r && r !== "auto" ? r : PRO_MODEL;
+}
+
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;

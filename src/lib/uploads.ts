@@ -36,23 +36,33 @@ export function isAllowedUpload(fileName: string, fileType: string): boolean {
 }
 
 /**
- * Persists a student submission file under
- * `UPLOAD_DIR/courses/{courseId}/submissions/{safeName}` and returns the
- * URL the `/api/files/...` route serves it from. File name is sanitized with
- * `path.basename` to prevent traversal.
+ * Persists a file under `UPLOAD_DIR/courses/{courseId}/{subdir}/{safeName}` and
+ * returns the URL the `/api/files/...` route serves it from. File name is
+ * sanitized with `path.basename` to prevent traversal.
  */
-export async function saveSubmissionFile(
+export async function saveCourseFile(
   courseId: string,
+  subdir: string,
   fileName: string,
   buffer: Buffer
 ): Promise<{ url: string; safeName: string }> {
   const safeName = path.basename(fileName);
-  const dir = path.join(getUploadDir(), "courses", courseId, "submissions");
+  const safeSubdir = path.basename(subdir);
+  const dir = path.join(getUploadDir(), "courses", courseId, safeSubdir);
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, safeName), buffer);
 
   return {
-    url: `/api/files/courses/${courseId}/submissions/${encodeURIComponent(safeName)}`,
+    url: `/api/files/courses/${courseId}/${safeSubdir}/${encodeURIComponent(safeName)}`,
     safeName,
   };
+}
+
+/** Student-submission upload (kept for the submissions route). */
+export function saveSubmissionFile(
+  courseId: string,
+  fileName: string,
+  buffer: Buffer
+): Promise<{ url: string; safeName: string }> {
+  return saveCourseFile(courseId, "submissions", fileName, buffer);
 }
