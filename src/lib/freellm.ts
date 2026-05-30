@@ -2,6 +2,21 @@ const FREELLMAPI_URL = (process.env.FREELLMAPI_URL ?? "").replace(/\/$/, "");
 const FREELLMAPI_KEY = process.env.FREELLMAPI_KEY ?? "";
 const DEFAULT_MODEL = process.env.FREELLMAPI_MODEL ?? "auto";
 
+// Strongest large-context model served to PRO users. Overridable via env so the
+// exact model can change without a code edit as the available pool rotates.
+const PRO_MODEL = process.env.FREELLMAPI_PRO_MODEL ?? "gemini-3.5-flash";
+
+/**
+ * Picks the model for an LLM call based on the caller's plan.
+ * - FREE users always run on the free router (`DEFAULT_MODEL`, normally "auto").
+ * - PRO users get `PRO_MODEL`, unless they explicitly request another model.
+ */
+export function resolveModelForPlan(isPro: boolean, requested?: string | null): string {
+  if (!isPro) return DEFAULT_MODEL;
+  const r = requested?.trim();
+  return r && r !== "auto" ? r : PRO_MODEL;
+}
+
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;

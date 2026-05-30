@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { freeLLMStream } from "@/lib/freellm";
+import { freeLLMStream, resolveModelForPlan } from "@/lib/freellm";
+import { isProUser } from "@/lib/plan";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 120;
@@ -118,8 +119,10 @@ ${reviewContext}
     { role: "user", content: body.message.slice(0, MAX_MESSAGE_CHARS) },
   ];
 
+  const model = resolveModelForPlan(await isProUser(userId));
+
   try {
-    const stream = await freeLLMStream(messages, { temperature: TEMPERATURE });
+    const stream = await freeLLMStream(messages, { temperature: TEMPERATURE, model });
     return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",

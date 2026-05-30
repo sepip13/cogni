@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { freeLLMComplete } from "@/lib/freellm";
+import { freeLLMComplete, resolveModelForPlan } from "@/lib/freellm";
+import { isProUser } from "@/lib/plan";
 import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 
@@ -109,9 +110,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  let model = "auto";
   const body = (await req.json().catch(() => ({}))) as { model?: unknown };
-  if (typeof body.model === "string" && body.model.trim()) model = body.model.trim();
+  const requestedModel = typeof body.model === "string" ? body.model : null;
+  const model = resolveModelForPlan(await isProUser(userId), requestedModel);
 
   const userMessage = `Course rubric / material:
 <rubric>

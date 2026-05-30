@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { freeLLMComplete } from "@/lib/freellm";
+import { freeLLMComplete, resolveModelForPlan } from "@/lib/freellm";
+import { isProUser } from "@/lib/plan";
 import { rateLimit } from "@/lib/rate-limit";
 import { z } from "zod";
 
@@ -102,7 +103,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     );
   }
 
-  const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : "auto";
+  const requestedModel = typeof body.model === "string" ? body.model : null;
+  const model = resolveModelForPlan(await isProUser(userId), requestedModel);
 
   const userMessage = `Question: ${question.q}
 
