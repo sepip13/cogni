@@ -2,7 +2,7 @@
 
 Personalized exam prep — upload your course materials and get a ranked study plan in under 90 seconds.
 
-Built with Next.js 16 (App Router), Prisma 7, NextAuth v5, Anthropic Claude, and Resend.
+Built with Next.js 16 (App Router), Prisma 7, NextAuth v5, a self-hosted FreeLLMAPI backend, and Resend.
 
 ---
 
@@ -47,7 +47,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | Service | What to set up |
 |---------|---------------|
 | [Resend](https://resend.com) | Transactional email — verify your sending domain |
-| [Anthropic Console](https://console.anthropic.com) | API key for Claude |
+| FreeLLMAPI | Self-hosted LLM aggregator (see `../freellmapi`) — provides the unified API key |
 | PostgreSQL | Installed on the VPS |
 | Node.js 20+ | Installed on the VPS |
 | Nginx | Reverse proxy |
@@ -94,7 +94,6 @@ DATABASE_URL=postgresql://cogni_user:strong_password_here@localhost:5432/cogni_d
 AUTH_SECRET=vHy8MrbXlrm/oCJIrgTe3M31w7x1kd9rMlpFVZV13ZI=
 AUTH_URL=https://cogni.futuresage.online
 RESEND_API_KEY=re_xxxxxxxxxxxx
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxx
 UPLOAD_DIR=/var/www/cogni/uploads
 ```
 
@@ -181,7 +180,7 @@ See [`.env.example`](.env.example) for all variables with inline documentation.
 | Framework | Next.js 16.2 (App Router, TypeScript) |
 | Database | PostgreSQL via Prisma 7 |
 | Auth | NextAuth v5 (Resend magic link) |
-| AI | Anthropic Claude (claude-sonnet-4-5) |
+| AI | FreeLLMAPI — self-hosted LLM aggregator (Gemini, Groq, Mistral, …) |
 | File storage | Local disk (`UPLOAD_DIR`) |
 | Email | Resend |
 | PDF export | @react-pdf/renderer v4 |

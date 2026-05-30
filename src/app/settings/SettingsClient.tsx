@@ -7,7 +7,7 @@ type QualityTier = "quick" | "balanced" | "maximum";
 const QUALITY_OPTIONS: { id: QualityTier; name: string; desc: string }[] = [
   { id: "quick", name: "Quick", desc: "Fast scan, good for short notes" },
   { id: "balanced", name: "Balanced", desc: "Thorough analysis, best for most courses" },
-  { id: "maximum", name: "Maximum", desc: "Deepest analysis with Claude AI" },
+  { id: "maximum", name: "Maximum", desc: "Deepest analysis with our most capable model" },
 ];
 
 interface SettingsClientProps {

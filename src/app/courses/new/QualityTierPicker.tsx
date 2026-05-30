@@ -23,7 +23,7 @@ const QUALITY_TIERS: {
 }[] = [
   { id: "quick", name: "Quick", desc: "Fast scan, good for short notes" },
   { id: "balanced", name: "Balanced", desc: "Thorough analysis, best for most courses", badge: "Recommended" },
-  { id: "maximum", name: "Maximum", desc: "Deepest analysis with Claude AI", badge: "PRO" },
+  { id: "maximum", name: "Maximum", desc: "Deepest analysis with our most capable model", badge: "PRO" },
 ];
 
 function groupByCategory(list: LlmModel[]): [string, LlmModel[]][] {
