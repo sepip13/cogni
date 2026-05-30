@@ -24,7 +24,7 @@ const MAX_NODES = 28;
 const MAX_CLUSTERS = 8;
 const CONCURRENCY = 2;
 const EXTRACT_TIMEOUT_MS = 240_000;
-const EXTRACT_MAX_TOKENS = 4000;
+const EXTRACT_MAX_TOKENS = 7000; // room for the full bounded concept list
 const EXTRACT_ATTEMPTS = 2; // one retry on a slow/garbled response
 
 export type MapNode = {
@@ -114,7 +114,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number
 
 function extractSystem(courseName: string, level: string | null): string {
   const lvl = level ? ` The student level is: ${level}.` : "";
-  return `You are a curriculum analyst for "${courseName}".${lvl} From THIS PORTION of the course material, extract the key concepts a student must master. For each concept give: a short label, a 1-2 sentence summary, examImportance (1-5), learningImportance (1-5), a cluster (a short theme/topic name it belongs to), and prerequisites (labels of concepts it builds on). Ground ONLY in the provided text — never invent. Detect the language of the material.
+  return `You are a curriculum analyst for "${courseName}".${lvl} From THIS PORTION of the course material, extract the 15-25 MOST important concepts a student must master (quality over quantity — do not list everything). For each concept give: a short label, a 1-2 sentence summary, examImportance (1-5), learningImportance (1-5), a cluster (a short theme/topic name it belongs to), and prerequisites (labels of concepts it builds on). Ground ONLY in the provided text — never invent. Detect the language of the material.
 Return JSON only: { "language": "...", "concepts": [{ "label": "...", "summary": "...", "examImportance": 1-5, "learningImportance": 1-5, "cluster": "theme name", "prerequisites": ["concept label"] }] }`;
 }
 
