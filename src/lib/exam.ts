@@ -15,7 +15,12 @@ const SPLIT_TIMEOUT_MS = 120_000;
 const MOCK_TIMEOUT_MS = 180_000;
 
 function stripFences(raw: string): string {
-  return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  const s = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  if (s.startsWith("{") || s.startsWith("[")) return s;
+  // Fall back to the first {…} block if the model added prose around it.
+  const a = s.indexOf("{");
+  const b = s.lastIndexOf("}");
+  return a !== -1 && b > a ? s.slice(a, b + 1) : s;
 }
 
 // ── Split a trial paper into its questions ────────────────────────────────────
