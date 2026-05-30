@@ -39,6 +39,52 @@ function stripFences(raw: string): string {
   return a !== -1 && b > a ? s.slice(a, b + 1) : s;
 }
 
+/**
+ * Recovers complete `{…}` objects from a (possibly truncated) JSON array under
+ * the given key. The free proxy sometimes cuts the response mid-array, so this
+ * salvages every whole element that did come through instead of losing them all.
+ */
+function salvageArray(content: string, key: string): unknown[] {
+  const keyIdx = content.indexOf(`"${key}"`);
+  const start = content.indexOf("[", keyIdx === -1 ? 0 : keyIdx);
+  if (start === -1) return [];
+  const out: unknown[] = [];
+  let i = start + 1;
+  while (i < content.length) {
+    while (i < content.length && /[\s,]/.test(content[i])) i++;
+    if (i >= content.length || content[i] === "]") break;
+    if (content[i] !== "{") break;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let j = i;
+    for (; j < content.length; j++) {
+      const ch = content[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else if (ch === '"') inStr = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          j++;
+          break;
+        }
+      }
+    }
+    if (depth !== 0) break; // truncated object — stop salvaging
+    try {
+      out.push(JSON.parse(content.slice(i, j)));
+    } catch {
+      break;
+    }
+    i = j;
+  }
+  return out;
+}
+
 // ── Split a trial paper into its questions ────────────────────────────────────
 
 const TrialQuestionSchema = z.object({
@@ -77,8 +123,15 @@ export async function splitTrialQuestions(trialId: string, model: string): Promi
         ],
         { model, jsonMode: true, temperature: 0.1, maxTokens: 8000, timeoutMs: SPLIT_TIMEOUT_MS }
       );
-      const parsed = SplitSchema.parse(JSON.parse(stripFences(raw)));
-      const qs = parsed.questions.slice(0, MAX_QUESTIONS);
+      const cleaned = stripFences(raw);
+      let parsedQs: z.infer<typeof TrialQuestionSchema>[];
+      try {
+        parsedQs = SplitSchema.parse(JSON.parse(cleaned)).questions;
+      } catch {
+        // truncated/garbled response — recover the questions that came through
+        parsedQs = z.array(TrialQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
+      }
+      const qs = parsedQs.slice(0, MAX_QUESTIONS);
       if (qs.length === 0) throw new Error("Couldn't find any questions in this file.");
       return qs;
     });
@@ -154,7 +207,15 @@ ${(trial.course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS)}
         ],
         { model, jsonMode: true, temperature: 0.4, maxTokens: 8000, timeoutMs: MOCK_TIMEOUT_MS }
       );
-      return MockSchema.parse(JSON.parse(stripFences(raw)));
+      const cleaned = stripFences(raw);
+      try {
+        return MockSchema.parse(JSON.parse(cleaned));
+      } catch {
+        // truncated/garbled — recover the questions that came through
+        const qs = z.array(MockQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
+        if (qs.length === 0) throw new Error("Could not generate the exam.");
+        return { title: "Practice exam", questions: qs };
+      }
     });
 
     await prisma.mockExam.update({
