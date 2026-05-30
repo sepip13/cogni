@@ -1,55 +1,15 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { freeLLMComplete, resolveLargeContextModel } from "@/lib/freellm";
+import { resolveLargeContextModel } from "@/lib/freellm";
+import { buildMindMap } from "@/lib/concept-map";
 import { generateSection } from "@/lib/guide";
 import { isProUser } from "@/lib/plan";
 import { rateLimit } from "@/lib/rate-limit";
-import { z } from "zod";
 
 export const maxDuration = 300;
 
-const TEMPERATURE = 0.2;
-const MAX_TOKENS = 8000;
-const MAX_MATERIAL_CHARS = 140_000;
-const MAX_NODES = 30;
-const CONCEPT_MAP_TIMEOUT_MS = 240_000; // heavy call — large input + big JSON
 const GUIDE_LIMIT = { max: 10, windowMs: 60 * 60 * 1000 }; // 10 / hour / user
-
-const MindMapSchema = z.object({
-  language: z.string().default("English"),
-  nodes: z
-    .array(
-      z.object({
-        id: z.string(),
-        label: z.string(),
-        summary: z.string().default(""),
-        examImportance: z.coerce.number().default(3),
-        learningImportance: z.coerce.number().default(3),
-        cluster: z.string().default("general"),
-        sourceRefs: z
-          .array(z.object({ page: z.union([z.string(), z.number()]).optional() }))
-          .default([]),
-      })
-    )
-    .min(1),
-  edges: z
-    .array(
-      z.object({
-        from: z.string(),
-        to: z.string(),
-        type: z.enum(["prerequisite", "related", "contrast", "example_of"]).catch("related"),
-        label: z.string().default(""),
-      })
-    )
-    .default([]),
-  clusters: z
-    .array(z.object({ id: z.string(), title: z.string().default(""), theme: z.string().default("") }))
-    .default([]),
-  outline: z.array(z.string()).default([]),
-});
-
-type MindMap = z.infer<typeof MindMapSchema>;
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -154,78 +114,27 @@ export async function POST(req: NextRequest, { params }: Params) {
 
 type CourseForMap = NonNullable<Awaited<ReturnType<typeof ownedCourse>>>;
 
-function buildSystemPrompt(courseName: string, level: string | null): string {
-  const levelLine = level ? ` The student level is: ${level}.` : "";
-  return `You are a curriculum analyst. From the COURSE MATERIAL, extract the concept map a top student would build to master "${courseName}".${levelLine}
-Identify the KEY concepts (aim for 12-25, never more than 30), how important each is (a) for the exam and (b) for genuine understanding, and how they relate. Group them into a few teachable clusters and give a sensible teaching order (prerequisites before dependents).
-Ground EVERYTHING only in the provided material — never invent a concept or a page number. Detect the language of the material and set "language" to it.
-Return JSON only:
-{
-  "language": "<language of the material>",
-  "nodes": [{ "id": "kebab-id", "label": "short name", "summary": "1-2 sentences", "examImportance": 1-5, "learningImportance": 1-5, "cluster": "cluster-id", "sourceRefs": [{ "page": "N" }] }],
-  "edges": [{ "from": "id", "to": "id", "type": "prerequisite|related|contrast|example_of", "label": "" }],
-  "clusters": [{ "id": "cluster-id", "title": "Cluster name", "theme": "one line" }],
-  "outline": ["nodeId in teaching order"]
-}`;
-}
-
-function buildUserMessage(course: CourseForMap): string {
-  const topicHints =
-    course.topics.length > 0
-      ? course.topics
-          .map((t) => `- ${t.num} ${t.title} [${t.priority}${t.priorityLabel ? `/${t.priorityLabel}` : ""}]`)
-          .join("\n")
-      : "(none)";
-  return `<course_material>
-${(course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS)}
-</course_material>
-
-<existing_topic_ranking>
-${topicHints}
-</existing_topic_ranking>`;
-}
-
-function clampImportance(n: number): number {
-  if (!Number.isFinite(n)) return 3;
-  return Math.min(5, Math.max(1, Math.round(n)));
-}
-
-/** Keeps the highest-signal nodes if the model returns too many. */
-function topNodes(map: MindMap): MindMap["nodes"] {
-  const scored = [...map.nodes].sort(
-    (a, b) =>
-      b.examImportance + b.learningImportance - (a.examImportance + a.learningImportance)
-  );
-  return scored.slice(0, MAX_NODES).map((n) => ({
-    ...n,
-    examImportance: clampImportance(n.examImportance),
-    learningImportance: clampImportance(n.learningImportance),
-  }));
+function topicHintsFor(course: CourseForMap): string {
+  if (course.topics.length === 0) return "(none)";
+  return course.topics
+    .map((t) => `- ${t.num} ${t.title} [${t.priority}${t.priorityLabel ? `/${t.priorityLabel}` : ""}]`)
+    .join("\n");
 }
 
 async function buildConceptMap(guideId: string, course: CourseForMap, model: string): Promise<void> {
   try {
-    const raw = await freeLLMComplete(
-      [
-        { role: "system", content: buildSystemPrompt(course.name, course.educationLevel) },
-        { role: "user", content: buildUserMessage(course) },
-      ],
-      { temperature: TEMPERATURE, jsonMode: true, model, maxTokens: MAX_TOKENS, timeoutMs: CONCEPT_MAP_TIMEOUT_MS }
+    const map = await buildMindMap(
+      {
+        courseName: course.name,
+        educationLevel: course.educationLevel,
+        rawText: course.rawText ?? "",
+        topicHints: topicHintsFor(course),
+      },
+      model
     );
 
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-    const parsed = MindMapSchema.parse(JSON.parse(cleaned));
-
-    const nodes = topNodes(parsed);
-    const keptIds = new Set(nodes.map((n) => n.id));
-    const edges = parsed.edges.filter((e) => keptIds.has(e.from) && keptIds.has(e.to));
-    const mindMap = { nodes, edges, clusters: parsed.clusters };
-
-    // Section order: the model's outline (filtered to kept nodes), then any leftover nodes.
-    const outline = parsed.outline.filter((id) => keptIds.has(id));
-    const ordered = [...outline, ...nodes.map((n) => n.id).filter((id) => !outline.includes(id))];
-
-    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const byId = new Map(map.nodes.map((n) => [n.id, n]));
+    const ordered = [...map.outline, ...map.nodes.map((n) => n.id).filter((id) => !map.outline.includes(id))];
     const sections = ordered.map((id, i) => ({
       guideId,
       order: i,
@@ -237,7 +146,12 @@ async function buildConceptMap(guideId: string, course: CourseForMap, model: str
     await prisma.$transaction([
       prisma.studyGuide.update({
         where: { id: guideId },
-        data: { status: "MAP_READY", language: parsed.language, mindMap, outline: ordered },
+        data: {
+          status: "MAP_READY",
+          language: map.language,
+          mindMap: { nodes: map.nodes, edges: map.edges, clusters: map.clusters },
+          outline: ordered,
+        },
       }),
       prisma.studyGuideSection.createMany({ data: sections }),
     ]);
