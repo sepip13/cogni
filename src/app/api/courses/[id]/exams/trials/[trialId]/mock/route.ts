@@ -5,6 +5,7 @@ import { resolveLargeContextModel } from "@/lib/freellm";
 import { generateMockExam } from "@/lib/exam";
 import { isProUser } from "@/lib/plan";
 import { rateLimit } from "@/lib/rate-limit";
+import { userHasJobCapacity } from "@/lib/concurrency";
 
 export const maxDuration = 120;
 
@@ -39,6 +40,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json(
       { error: "Too many practice exams generated. Please wait a moment." },
       { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
+
+  // Don't pile up duplicate generations for the same trial (double-click): if one
+  // is already running, hand back its id so the client just polls that one.
+  const existing = await prisma.mockExam.findFirst({
+    where: { trialId, status: "GENERATING" },
+    select: { id: true },
+  });
+  if (existing) {
+    return NextResponse.json({ mockId: existing.id }, { status: 200 });
+  }
+
+  if (!(await userHasJobCapacity(userId))) {
+    return NextResponse.json(
+      { error: "You have several tasks still processing. Please wait for them to finish, then try again." },
+      { status: 429 }
     );
   }
 

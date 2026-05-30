@@ -8,7 +8,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { freeLLMComplete } from "@/lib/freellm";
+import { freeLLMCompleteHeavy } from "@/lib/freellm";
 
 const MAX_SLICE_CHARS = 9000;
 const MAX_TOKENS = 2400;
@@ -137,7 +137,7 @@ ${slices}
     let md = "";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        md = await freeLLMComplete(
+        md = await freeLLMCompleteHeavy(
           [
             { role: "system", content: buildSystemPrompt(section.guide.course.name, lang) },
             { role: "user", content: userMessage },

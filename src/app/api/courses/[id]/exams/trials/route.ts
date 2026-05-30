@@ -7,6 +7,7 @@ import { resolveLargeContextModel } from "@/lib/freellm";
 import { splitTrialQuestions } from "@/lib/exam";
 import { isProUser } from "@/lib/plan";
 import { rateLimit } from "@/lib/rate-limit";
+import { userHasJobCapacity } from "@/lib/concurrency";
 
 export const maxDuration = 300;
 
@@ -68,6 +69,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json(
       { error: "Too many uploads. Please slow down." },
       { status: 429, headers: { "Retry-After": String(limit.retryAfterSec) } }
+    );
+  }
+
+  if (!(await userHasJobCapacity(userId))) {
+    return NextResponse.json(
+      { error: "You have several tasks still processing. Please wait for them to finish, then try again." },
+      { status: 429 }
     );
   }
 

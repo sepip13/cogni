@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { runHeavyLLM } from "@/lib/concurrency";
 
 const FREELLMAPI_URL = (process.env.FREELLMAPI_URL ?? "").replace(/\/$/, "");
 const FREELLMAPI_KEY = process.env.FREELLMAPI_KEY ?? "";
@@ -181,7 +182,7 @@ export async function ingestCourse(
     const freeLLMModel = modelChoice || "auto";
     console.log(`[ingest:${courseId}] ▶ Calling FreeLLMAPI — model=${freeLLMModel}`);
     try {
-      plan = await callFreeLLMAPI(userMessage, freeLLMModel, systemPrompt);
+      plan = await runHeavyLLM(() => callFreeLLMAPI(userMessage, freeLLMModel, systemPrompt));
       console.log(`[ingest:${courseId}] ✓ FreeLLMAPI responded — topics=${plan.topics.length}`);
     } catch (freeErr) {
       lastError = freeErr instanceof Error ? freeErr.message : String(freeErr);

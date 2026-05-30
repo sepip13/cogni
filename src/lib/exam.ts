@@ -5,8 +5,14 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { freeLLMComplete } from "@/lib/freellm";
+import { freeLLMCompleteHeavy } from "@/lib/freellm";
 import { z } from "zod";
+
+// Per-process guards so a double-click (two `after()` jobs for the same id)
+// can't run the same split/mock twice concurrently. A restart clears these —
+// which is correct, since a restart also kills the jobs they guard.
+const splitInFlight = new Set<string>();
+const mockInFlight = new Set<string>();
 
 const MAX_TRIAL_CHARS = 30_000;
 const MAX_MATERIAL_CHARS = 60_000;
@@ -28,18 +34,13 @@ const SPLIT_CONCURRENCY = 3; // the proxy slows under load; keep it modest
 const SPLIT_CHUNK_TIMEOUT_MS = 200_000;
 const SPLIT_CHUNK_MAX_TOKENS = 6_000;
 
-/** Runs `fn`, retrying once on any failure (slow proxy / garbled JSON). */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < ATTEMPTS; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("Failed after retries");
-}
+// ── Mock-exam batching ────────────────────────────────────────────────────────
+// Generating a full exam in one call truncates the same way the split did (each
+// question carries an expected answer + key points). So we generate in small
+// batches whose JSON fits, in parallel, then merge + dedupe.
+const MOCK_BATCH_SIZE = 8; // questions per call
+const MOCK_CONCURRENCY = 3;
+const MOCK_BATCH_MAX_TOKENS = 6_000;
 
 function stripFences(raw: string): string {
   const s = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
@@ -186,7 +187,7 @@ async function splitOneChunk(chunk: string, courseName: string, model: string): 
   ];
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     try {
-      const raw = await freeLLMComplete(messages, {
+      const raw = await freeLLMCompleteHeavy(messages, {
         model,
         jsonMode: true,
         temperature: 0.1,
@@ -209,44 +210,53 @@ async function splitOneChunk(chunk: string, courseName: string, model: string): 
 }
 
 export async function splitTrialQuestions(trialId: string, model: string): Promise<void> {
-  const trial = await prisma.examTrial.findUnique({
-    where: { id: trialId },
-    select: { parsedText: true, course: { select: { name: true } } },
-  });
-  if (!trial) return;
-
+  if (splitInFlight.has(trialId)) return; // a split for this trial is already running here
+  splitInFlight.add(trialId);
   try {
-    const text = (trial.parsedText ?? "").trim();
-    if (!text) throw new Error("No readable content in this exam file.");
+    try {
+      // Loading the trial is inside the try so a DB hiccup here sets FAILED
+      // (best-effort) instead of rejecting the after() callback and stranding
+      // the row in PARSING until the next restart.
+      const trial = await prisma.examTrial.findUnique({
+        where: { id: trialId },
+        select: { parsedText: true, course: { select: { name: true } } },
+      });
+      if (!trial) return; // row gone — nothing to mark
 
-    const chunks = chunkOnBoundaries(text.slice(0, MAX_TRIAL_CHARS), SPLIT_CHUNK_CHARS).slice(0, SPLIT_MAX_CHUNKS);
-    const perChunk = await mapLimit(chunks, SPLIT_CONCURRENCY, (chunk) =>
-      splitOneChunk(chunk, trial.course.name, model)
-    );
+      const text = (trial.parsedText ?? "").trim();
+      if (!text) throw new Error("No readable content in this exam file.");
 
-    // Merge across chunks: drop exact-duplicate questions, then renumber + cap.
-    const seen = new Set<string>();
-    const merged: TrialQuestion[] = [];
-    for (const q of perChunk.flat()) {
-      const key = normText(q.text);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      merged.push(q);
-      if (merged.length >= MAX_QUESTIONS) break;
+      const chunks = chunkOnBoundaries(text.slice(0, MAX_TRIAL_CHARS), SPLIT_CHUNK_CHARS).slice(0, SPLIT_MAX_CHUNKS);
+      const perChunk = await mapLimit(chunks, SPLIT_CONCURRENCY, (chunk) =>
+        splitOneChunk(chunk, trial.course.name, model)
+      );
+
+      // Merge across chunks: drop exact-duplicate questions, then renumber + cap.
+      const seen = new Set<string>();
+      const merged: TrialQuestion[] = [];
+      for (const q of perChunk.flat()) {
+        const key = normText(q.text);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        merged.push(q);
+        if (merged.length >= MAX_QUESTIONS) break;
+      }
+      if (merged.length === 0) throw new Error("Couldn't find any questions in this file.");
+      const questions = merged.map((q, i) => ({ ...q, num: String(i + 1) }));
+
+      await prisma.examTrial.update({
+        where: { id: trialId },
+        data: { status: "READY", questions },
+      });
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : "Could not read this exam.";
+      console.error(`[exam-trial:${trialId}] split error: ${msg}`);
+      await prisma.examTrial
+        .update({ where: { id: trialId }, data: { status: "FAILED", error: msg.slice(0, 500) } })
+        .catch(() => {});
     }
-    if (merged.length === 0) throw new Error("Couldn't find any questions in this file.");
-    const questions = merged.map((q, i) => ({ ...q, num: String(i + 1) }));
-
-    await prisma.examTrial.update({
-      where: { id: trialId },
-      data: { status: "READY", questions },
-    });
-  } catch (err) {
-    const msg = err instanceof Error && err.message ? err.message : "Could not read this exam.";
-    console.error(`[exam-trial:${trialId}] split error: ${msg}`);
-    await prisma.examTrial
-      .update({ where: { id: trialId }, data: { status: "FAILED", error: msg.slice(0, 500) } })
-      .catch(() => {});
+  } finally {
+    splitInFlight.delete(trialId);
   }
 }
 
@@ -266,73 +276,118 @@ const MockSchema = z.object({
   questions: z.array(MockQuestionSchema).min(1),
 });
 
-function mockSystem(courseName: string, count: number): string {
+type MockQuestion = z.infer<typeof MockQuestionSchema>;
+
+function mockSystem(courseName: string, count: number, batchIdx: number, totalBatches: number): string {
+  const distinct =
+    totalBatches > 1
+      ? ` This is part ${batchIdx + 1} of ${totalBatches} of one exam — cover DIFFERENT parts of the material than the other parts and never repeat a question.`
+      : "";
   return `You are an exam setter for ${courseName}. Study the TRIAL EXAM's structure: question types, difficulty, mark distribution, and phrasing style.
-Produce a NEW practice exam on the SAME course material that mirrors that style but with DIFFERENT questions (never copy the trial verbatim). Produce exactly ${count} questions. Ground every question in the course material.
+Produce NEW practice questions on the SAME course material that mirror that style but are DIFFERENT (never copy the trial verbatim). Produce exactly ${count} question(s).${distinct} Ground every question in the course material.
 For each question include a model expected answer and the key points a strong answer must contain.
 Return JSON only:
 { "title": "...", "questions": [{ "q": "...", "type": "mcq|short|essay|numeric", "marks": 5, "source": "where in the material", "expected_answer": "...", "key_points": ["..."] }] }`;
 }
 
-export async function generateMockExam(mockId: string, model: string, count: number): Promise<void> {
-  const mock = await prisma.mockExam.findUnique({
-    where: { id: mockId },
-    select: {
-      trial: { select: { questions: true, course: { select: { name: true, rawText: true } } } },
-    },
-  });
-  if (!mock?.trial) {
-    await prisma.mockExam
-      .update({ where: { id: mockId }, data: { status: "FAILED", error: "Trial exam not found." } })
-      .catch(() => {});
-    return;
-  }
-
-  const trial = mock.trial;
-
-  try {
-    const trialQs = Array.isArray(trial.questions) ? trial.questions : [];
-    const userMessage = `Trial exam questions (style reference):
-${JSON.stringify(trialQs).slice(0, MAX_TRIAL_CHARS)}
+/** Generates ONE batch of mock questions; returns [] on failure (skip, not fatal). */
+async function generateMockBatch(
+  ctx: { courseName: string; styleRef: string; material: string; model: string },
+  batchCount: number,
+  batchIdx: number,
+  totalBatches: number
+): Promise<MockQuestion[]> {
+  const userMessage = `Trial exam questions (style reference):
+${ctx.styleRef}
 
 Course material:
 <material>
-${(trial.course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS)}
+${ctx.material}
 </material>`;
-
-    const parsed = await withRetry(async () => {
-      const raw = await freeLLMComplete(
-        [
-          { role: "system", content: mockSystem(trial.course.name, count) },
-          { role: "user", content: userMessage },
-        ],
-        { model, jsonMode: true, temperature: 0.4, maxTokens: 8000, timeoutMs: MOCK_TIMEOUT_MS }
-      );
+  const messages = [
+    { role: "system" as const, content: mockSystem(ctx.courseName, batchCount, batchIdx, totalBatches) },
+    { role: "user" as const, content: userMessage },
+  ];
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    try {
+      const raw = await freeLLMCompleteHeavy(messages, {
+        model: ctx.model,
+        jsonMode: true,
+        temperature: 0.4,
+        maxTokens: MOCK_BATCH_MAX_TOKENS,
+        timeoutMs: MOCK_TIMEOUT_MS,
+      });
       const cleaned = stripFences(raw);
+      let qs: MockQuestion[];
       try {
-        return MockSchema.parse(JSON.parse(cleaned));
+        qs = MockSchema.parse(JSON.parse(cleaned)).questions;
       } catch {
-        // truncated/garbled — recover the questions that came through
-        const qs = z.array(MockQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
-        if (qs.length === 0) throw new Error("Could not generate the exam.");
-        return { title: "Practice exam", questions: qs };
+        qs = z.array(MockQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
       }
-    });
+      if (qs.length > 0) return qs;
+    } catch {
+      // timeout / garbled — retry once, then skip this batch
+    }
+  }
+  return [];
+}
 
-    await prisma.mockExam.update({
-      where: { id: mockId },
-      data: {
-        status: "READY",
-        title: parsed.title,
-        questions: parsed.questions.slice(0, MAX_QUESTIONS),
-        modelId: model,
-      },
-    });
-  } catch (err) {
-    const msg = err instanceof Error && err.message ? err.message : "Could not generate the exam.";
-    console.error(`[mock-exam:${mockId}] generate error: ${msg}`);
-    await prisma.mockExam
-      .update({ where: { id: mockId }, data: { status: "FAILED", error: msg.slice(0, 500) } })
-      .catch(() => {});
+export async function generateMockExam(mockId: string, model: string, count: number): Promise<void> {
+  if (mockInFlight.has(mockId)) return;
+  mockInFlight.add(mockId);
+  try {
+    try {
+      const mock = await prisma.mockExam.findUnique({
+        where: { id: mockId },
+        select: {
+          trial: { select: { questions: true, course: { select: { name: true, rawText: true } } } },
+        },
+      });
+      if (!mock) return; // row gone
+      if (!mock.trial) throw new Error("Trial exam not found.");
+      const trial = mock.trial;
+
+      const trialQs = Array.isArray(trial.questions) ? trial.questions : [];
+      const ctx = {
+        courseName: trial.course.name,
+        styleRef: JSON.stringify(trialQs).slice(0, MAX_TRIAL_CHARS),
+        material: (trial.course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS),
+        model,
+      };
+
+      // Split the requested count into small batches whose JSON won't truncate.
+      const batchCounts: number[] = [];
+      for (let remaining = count; remaining > 0; remaining -= MOCK_BATCH_SIZE) {
+        batchCounts.push(Math.min(MOCK_BATCH_SIZE, remaining));
+      }
+      const perBatch = await mapLimit(batchCounts, MOCK_CONCURRENCY, (bc, i) =>
+        generateMockBatch(ctx, bc, i, batchCounts.length)
+      );
+
+      // Merge: drop near-duplicate questions across batches, then cap at count.
+      const seen = new Set<string>();
+      const merged: MockQuestion[] = [];
+      for (const q of perBatch.flat()) {
+        const key = normText(q.q);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        merged.push(q);
+        if (merged.length >= count) break;
+      }
+      if (merged.length === 0) throw new Error("Could not generate the exam.");
+
+      await prisma.mockExam.update({
+        where: { id: mockId },
+        data: { status: "READY", title: "Practice exam", questions: merged, modelId: model },
+      });
+    } catch (err) {
+      const msg = err instanceof Error && err.message ? err.message : "Could not generate the exam.";
+      console.error(`[mock-exam:${mockId}] generate error: ${msg}`);
+      await prisma.mockExam
+        .update({ where: { id: mockId }, data: { status: "FAILED", error: msg.slice(0, 500) } })
+        .catch(() => {});
+    }
+  } finally {
+    mockInFlight.delete(mockId);
   }
 }

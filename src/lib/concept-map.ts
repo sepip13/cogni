@@ -12,7 +12,7 @@
  * Arbitrarily large courses are handled and the context window is never a wall.
  */
 
-import { freeLLMComplete } from "@/lib/freellm";
+import { freeLLMCompleteHeavy } from "@/lib/freellm";
 import { z } from "zod";
 
 // The free proxy is slow and gets slower under concurrency, but a single call
@@ -131,7 +131,7 @@ async function extractChunk(
   ];
   for (let attempt = 0; attempt < EXTRACT_ATTEMPTS; attempt++) {
     try {
-      const raw = await freeLLMComplete(messages, {
+      const raw = await freeLLMCompleteHeavy(messages, {
         model,
         jsonMode: true,
         temperature: 0.2,

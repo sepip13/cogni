@@ -5,6 +5,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { parseFile } from "@/lib/parse-file";
 import { ingestCourse } from "@/lib/ingestion";
+import { userHasJobCapacity } from "@/lib/concurrency";
 
 export const maxDuration = 300;
 
@@ -79,6 +80,13 @@ export async function POST(req: NextRequest) {
       {
         error: `You can create up to ${DAILY_COURSE_LIMIT} courses per day. Try again tomorrow.`,
       },
+      { status: 429 }
+    );
+  }
+
+  if (!(await userHasJobCapacity(userId))) {
+    return NextResponse.json(
+      { error: "You have several tasks still processing. Please wait for them to finish, then try again." },
       { status: 429 }
     );
   }

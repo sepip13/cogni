@@ -1,3 +1,5 @@
+import { runHeavyLLM } from "@/lib/concurrency";
+
 const FREELLMAPI_URL = (process.env.FREELLMAPI_URL ?? "").replace(/\/$/, "");
 const FREELLMAPI_KEY = process.env.FREELLMAPI_KEY ?? "";
 const DEFAULT_MODEL = process.env.FREELLMAPI_MODEL ?? "auto";
@@ -94,6 +96,19 @@ export async function freeLLMComplete(
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("FreeLLMAPI returned no content");
   return content;
+}
+
+/**
+ * Heavy variant of {@link freeLLMComplete}: routed through the global heavy-LLM
+ * semaphore so background generation can't overwhelm the proxy or OOM the box.
+ * Use for chunked / batched background jobs; keep interactive calls (chat,
+ * grade, explain) on `freeLLMComplete` so they stay responsive.
+ */
+export function freeLLMCompleteHeavy(
+  messages: ChatMessage[],
+  opts: { model?: string; maxTokens?: number; temperature?: number; jsonMode?: boolean; timeoutMs?: number } = {}
+): Promise<string> {
+  return runHeavyLLM(() => freeLLMComplete(messages, opts));
 }
 
 export async function freeLLMStream(

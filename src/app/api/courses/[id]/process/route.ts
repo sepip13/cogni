@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ingestCourse } from "@/lib/ingestion";
 import { isUserPro } from "@/lib/access-codes";
+import { userHasJobCapacity } from "@/lib/concurrency";
 
 export const maxDuration = 300;
 
@@ -32,6 +33,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   // Idempotent: skip if already READY, re-run if FAILED
   if (course.status === "READY") {
     return NextResponse.json({ status: "READY" });
+  }
+
+  if (!(await userHasJobCapacity(session.user.id))) {
+    return NextResponse.json(
+      { error: "You have several tasks still processing. Please wait for them to finish, then try again." },
+      { status: 429 }
+    );
   }
 
   // Re-set to PROCESSING so the polling UI shows the right state
