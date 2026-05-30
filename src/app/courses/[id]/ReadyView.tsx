@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { MyWorkSection } from "./MyWorkSection";
+import { ShareDialog } from "@/components/share/ShareDialog";
 import type { CourseData } from "./types";
 
 function daysUntil(dateStr: string | null): number | null {
@@ -53,6 +56,7 @@ function PriorityChip({
 }
 
 export function ReadyView({ course }: { course: CourseData }) {
+  const [shareOpen, setShareOpen] = useState(false);
   const studiedCount = course.topics.filter((t) => t.studied).length;
   const totalTopics = course.topics.length;
   const progressPct =
@@ -145,7 +149,24 @@ export function ReadyView({ course }: { course: CourseData }) {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setShareOpen(true)}
+            style={{
+              padding: "9px 18px",
+              background: "var(--accent-soft)",
+              border: "1px solid var(--accent)",
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--accent)",
+              transition: "opacity 0.15s",
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+            }}
+          >
+            Share
+          </button>
           <Link
             href={`/courses/${course.id}/chat`}
             style={{
@@ -462,6 +483,11 @@ export function ReadyView({ course }: { course: CourseData }) {
           </Link>
         ))}
       </div>
+
+      {/* Student work — distinct from course material / study plan */}
+      <MyWorkSection courseId={course.id} />
+
+      {shareOpen && <ShareDialog courseId={course.id} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }

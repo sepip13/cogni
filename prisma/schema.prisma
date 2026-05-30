@@ -83,6 +83,8 @@ model Course {
   files                SourceFile[]
   topics               Topic[]
   chatMessages         ChatMessage[]
+  shares               CourseShare[]
+  submissions          Submission[]
 }
 
 enum CourseStatus {
@@ -192,4 +194,82 @@ model LlmModel {
 enum ModelTier {
   FREE
   PRO
+}
+
+// ── Sharing ────────────────────────────────────────────────
+model CourseShare {
+  id           String          @id @default(cuid())
+  courseId     String
+  course       Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  token        String          @unique // unguessable, URL-safe, >= 24 chars
+  permission   SharePermission @default(VIEW)
+  publicNoAuth Boolean         @default(true) // true = anyone with the link, no sign-in
+  includeSources Boolean       @default(false) // owner opt-in to expose source files
+  revoked      Boolean         @default(false)
+  expiresAt    DateTime?
+  createdBy    String
+  createdAt    DateTime        @default(now())
+  viewCount    Int             @default(0)
+
+  @@index([courseId])
+}
+
+enum SharePermission {
+  VIEW // read-only: study plan + topics (+ sources if owner opted in)
+  COMMENT // VIEW + can leave comments (requires sign-in)
+}
+
+// ── Student work (distinct from SourceFile course material) ──
+model Submission {
+  id         String             @id @default(cuid())
+  courseId   String
+  course     Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId     String
+  title      String
+  kind       SubmissionKind     @default(ASSIGNMENT)
+  status     SubmissionStatus   @default(IN_PROGRESS)
+  fileName   String?
+  fileType   String?
+  blobUrl    String?
+  parsedText String?            @db.Text
+  pageCount  Int?
+  questions  Json? // cached personalized examiner questions
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  reviews    SubmissionReview[]
+
+  @@index([courseId])
+  @@index([userId])
+}
+
+enum SubmissionKind {
+  ASSIGNMENT
+  PROJECT
+  PORTFOLIO
+  ESSAY
+  REPORT
+  OTHER
+}
+
+enum SubmissionStatus {
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  REVIEWED
+}
+
+// ── Rubric-based review snapshots (track improvement over time) ──
+model SubmissionReview {
+  id              String     @id @default(cuid())
+  submissionId    String
+  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  scoreOutOf10    Float // 0.0 – 10.0
+  rubricBreakdown Json // [{ criterion, scored, max, comment }]
+  strengths       Json // string[]
+  gaps            Json // string[]  — what's missing for 10/10
+  actionItems     Json // string[]  — concrete steps to complete
+  summary         String     @db.Text
+  modelId         String
+  createdAt       DateTime   @default(now())
+
+  @@index([submissionId])
 }
