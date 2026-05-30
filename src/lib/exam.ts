@@ -13,9 +13,20 @@ const MAX_MATERIAL_CHARS = 60_000;
 const MAX_QUESTIONS = 40;
 // The free proxy is slow and variable, so give heavy calls a generous timeout
 // and one retry (these run in the background, so a long wait is fine).
-const SPLIT_TIMEOUT_MS = 240_000;
 const MOCK_TIMEOUT_MS = 240_000;
 const ATTEMPTS = 2;
+
+// ── Trial-split chunking ──────────────────────────────────────────────────────
+// The proxy truncates long JSON well below the requested token cap, so a single
+// call on a whole paper silently loses questions. Instead we split the paper
+// into small chunks whose individual outputs comfortably fit, extract each in
+// parallel, and merge in code — the same approach that made the concept map
+// reliable. A chunk that fails is skipped, not fatal.
+const SPLIT_CHUNK_CHARS = 6_000; // small enough that one chunk's JSON won't truncate
+const SPLIT_MAX_CHUNKS = 6; // safety ceiling (≤ MAX_TRIAL_CHARS / SPLIT_CHUNK_CHARS)
+const SPLIT_CONCURRENCY = 3; // the proxy slows under load; keep it modest
+const SPLIT_CHUNK_TIMEOUT_MS = 200_000;
+const SPLIT_CHUNK_MAX_TOKENS = 6_000;
 
 /** Runs `fn`, retrying once on any failure (slow proxy / garbled JSON). */
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
@@ -85,6 +96,63 @@ function salvageArray(content: string, key: string): unknown[] {
   return out;
 }
 
+// ── Chunking helpers ──────────────────────────────────────────────────────────
+
+function normText(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Splits text into question-sized units — paragraph blocks, or single lines if
+ * the parse produced no blank lines — so a chunk boundary rarely cuts a question
+ * in half.
+ */
+function splitUnits(text: string): string[] {
+  const byBlank = text.split(/\n\s*\n/).map((u) => u.trim()).filter(Boolean);
+  return byBlank.length > 1 ? byBlank : text.split(/\n/);
+}
+
+/**
+ * Greedily packs units into chunks of at most `maxChars`, never cutting a unit
+ * unless a single unit is itself larger than the limit.
+ */
+function chunkOnBoundaries(text: string, maxChars: number): string[] {
+  const chunks: string[] = [];
+  let cur = "";
+  for (const unit of splitUnits(text)) {
+    if (unit.length > maxChars) {
+      if (cur) {
+        chunks.push(cur);
+        cur = "";
+      }
+      for (let i = 0; i < unit.length; i += maxChars) chunks.push(unit.slice(i, i + maxChars));
+      continue;
+    }
+    if (cur && cur.length + unit.length + 2 > maxChars) {
+      chunks.push(cur);
+      cur = unit;
+    } else {
+      cur = cur ? `${cur}\n\n${unit}` : unit;
+    }
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
+/** Runs `fn` over `items` with at most `limit` in flight at once, preserving order. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 // ── Split a trial paper into its questions ────────────────────────────────────
 
 const TrialQuestionSchema = z.object({
@@ -104,6 +172,42 @@ Extract EACH question with: its number, the full question text, its type (mcq|sh
 Return JSON only: { "questions": [{ "num": "1", "text": "...", "type": "short", "marks": 5 }] }`;
 }
 
+type TrialQuestion = z.infer<typeof TrialQuestionSchema>;
+
+/**
+ * Extracts the questions from ONE chunk. Tries a strict parse first, then
+ * salvages whole question objects from a truncated/garbled response. Returns []
+ * on failure (a bad chunk is skipped, never fatal to the whole split).
+ */
+async function splitOneChunk(chunk: string, courseName: string, model: string): Promise<TrialQuestion[]> {
+  const messages = [
+    { role: "system" as const, content: splitSystem(courseName) },
+    { role: "user" as const, content: chunk },
+  ];
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    try {
+      const raw = await freeLLMComplete(messages, {
+        model,
+        jsonMode: true,
+        temperature: 0.1,
+        maxTokens: SPLIT_CHUNK_MAX_TOKENS,
+        timeoutMs: SPLIT_CHUNK_TIMEOUT_MS,
+      });
+      const cleaned = stripFences(raw);
+      let qs: TrialQuestion[];
+      try {
+        qs = SplitSchema.parse(JSON.parse(cleaned)).questions;
+      } catch {
+        qs = z.array(TrialQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
+      }
+      if (qs.length > 0) return qs;
+    } catch {
+      // timeout / network / garbled — retry once, then give up on this chunk
+    }
+  }
+  return [];
+}
+
 export async function splitTrialQuestions(trialId: string, model: string): Promise<void> {
   const trial = await prisma.examTrial.findUnique({
     where: { id: trialId },
@@ -115,26 +219,23 @@ export async function splitTrialQuestions(trialId: string, model: string): Promi
     const text = (trial.parsedText ?? "").trim();
     if (!text) throw new Error("No readable content in this exam file.");
 
-    const questions = await withRetry(async () => {
-      const raw = await freeLLMComplete(
-        [
-          { role: "system", content: splitSystem(trial.course.name) },
-          { role: "user", content: text.slice(0, MAX_TRIAL_CHARS) },
-        ],
-        { model, jsonMode: true, temperature: 0.1, maxTokens: 8000, timeoutMs: SPLIT_TIMEOUT_MS }
-      );
-      const cleaned = stripFences(raw);
-      let parsedQs: z.infer<typeof TrialQuestionSchema>[];
-      try {
-        parsedQs = SplitSchema.parse(JSON.parse(cleaned)).questions;
-      } catch {
-        // truncated/garbled response — recover the questions that came through
-        parsedQs = z.array(TrialQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
-      }
-      const qs = parsedQs.slice(0, MAX_QUESTIONS);
-      if (qs.length === 0) throw new Error("Couldn't find any questions in this file.");
-      return qs;
-    });
+    const chunks = chunkOnBoundaries(text.slice(0, MAX_TRIAL_CHARS), SPLIT_CHUNK_CHARS).slice(0, SPLIT_MAX_CHUNKS);
+    const perChunk = await mapLimit(chunks, SPLIT_CONCURRENCY, (chunk) =>
+      splitOneChunk(chunk, trial.course.name, model)
+    );
+
+    // Merge across chunks: drop exact-duplicate questions, then renumber + cap.
+    const seen = new Set<string>();
+    const merged: TrialQuestion[] = [];
+    for (const q of perChunk.flat()) {
+      const key = normText(q.text);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(q);
+      if (merged.length >= MAX_QUESTIONS) break;
+    }
+    if (merged.length === 0) throw new Error("Couldn't find any questions in this file.");
+    const questions = merged.map((q, i) => ({ ...q, num: String(i + 1) }));
 
     await prisma.examTrial.update({
       where: { id: trialId },
