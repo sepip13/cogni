@@ -75,7 +75,7 @@ export async function splitTrialQuestions(trialId: string, model: string): Promi
           { role: "system", content: splitSystem(trial.course.name) },
           { role: "user", content: text.slice(0, MAX_TRIAL_CHARS) },
         ],
-        { model, jsonMode: true, temperature: 0.1, maxTokens: 4000, timeoutMs: SPLIT_TIMEOUT_MS }
+        { model, jsonMode: true, temperature: 0.1, maxTokens: 8000, timeoutMs: SPLIT_TIMEOUT_MS }
       );
       const parsed = SplitSchema.parse(JSON.parse(stripFences(raw)));
       const qs = parsed.questions.slice(0, MAX_QUESTIONS);
@@ -152,7 +152,7 @@ ${(trial.course.rawText ?? "").slice(0, MAX_MATERIAL_CHARS)}
           { role: "system", content: mockSystem(trial.course.name, count) },
           { role: "user", content: userMessage },
         ],
-        { model, jsonMode: true, temperature: 0.4, maxTokens: 6000, timeoutMs: MOCK_TIMEOUT_MS }
+        { model, jsonMode: true, temperature: 0.4, maxTokens: 8000, timeoutMs: MOCK_TIMEOUT_MS }
       );
       return MockSchema.parse(JSON.parse(stripFences(raw)));
     });
