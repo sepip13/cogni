@@ -4,13 +4,16 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { QualityTierPicker, type QualityTier, type LlmModel } from "./QualityTierPicker";
 
-const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".txt"];
+const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xlsx", ".xls", ".csv", ".txt"];
 const ALLOWED_MIMES = new Set([
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+  "application/vnd.ms-excel", // .xls / some browsers' .xlsx / .csv
+  "text/csv",
   "text/plain",
 ]);
 const MAX_FILES = 10;
