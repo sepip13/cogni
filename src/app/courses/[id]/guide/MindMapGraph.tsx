@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MindMap } from "../types";
+import type { FlashcardConceptCount, MindMap } from "../types";
 
 const W = 840;
 const H = 500;
@@ -38,10 +38,14 @@ export function MindMapGraph({
   mindMap,
   selectedId,
   onSelect,
+  conceptCounts = null,
 }: {
   mindMap: MindMap;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  // Optional flashcard mastery overlay: per-concept counts ring overdue nodes and
+  // solidify mastered ones. Absent (null) → no overlay, identical to before.
+  conceptCounts?: Record<string, FlashcardConceptCount> | null;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const simRef = useRef<SimNode[]>([]);
@@ -211,6 +215,12 @@ export function MindMapGraph({
       <g>
         {nodes.map((n) => {
           const selected = selectedId === n.id;
+          // Mastery overlay: a node with cards due gets a pulsing red ring; one
+          // whose cards are all reviewed (none due) is filled solid as "mastered".
+          const count = conceptCounts?.[n.id];
+          const due = !!count && count.due > 0;
+          const mastered = !!count && count.total > 0 && count.due === 0;
+          const fillOpacity = selected ? 0.95 : mastered ? 0.7 : 0.22;
           return (
             <g
               key={n.id}
@@ -218,12 +228,21 @@ export function MindMapGraph({
               style={{ cursor: "pointer" }}
               onPointerDown={(e) => onPointerDown(e, n.id)}
             >
+              {due && (
+                <circle
+                  className="node-due-ring"
+                  r={n.r + 5}
+                  fill="none"
+                  stroke="var(--high)"
+                  strokeWidth={2.5}
+                />
+              )}
               <circle
                 r={n.r}
                 fill={n.color}
-                fillOpacity={selected ? 0.95 : 0.22}
+                fillOpacity={fillOpacity}
                 stroke={n.color}
-                strokeWidth={selected ? 3 : 1.5}
+                strokeWidth={selected ? 3 : mastered ? 2 : 1.5}
               />
               <text
                 textAnchor="middle"

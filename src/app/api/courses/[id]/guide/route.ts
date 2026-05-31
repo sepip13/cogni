@@ -62,12 +62,33 @@ export async function GET(_req: NextRequest, { params }: Params) {
       updatedAt: true,
       sections: {
         orderBy: { order: "asc" },
-        select: { id: true, order: true, conceptKey: true, title: true, status: true, contentMd: true },
+        select: {
+          id: true,
+          order: true,
+          conceptKey: true,
+          title: true,
+          status: true,
+          contentMd: true,
+          quiz: true,
+          quizStatus: true,
+        },
       },
     },
   });
 
-  return NextResponse.json({ guide: guide ?? null });
+  // Mimic-mode signal: questions can mirror the student's real exam only when a
+  // parsed trial paper exists. Cheap, indexed lookup; only when a guide exists.
+  let examStyleAvailable = false;
+  if (guide) {
+    const trial = await prisma.examTrial.findFirst({
+      where: { courseId, status: "READY" },
+      orderBy: { createdAt: "desc" },
+      select: { questions: true },
+    });
+    examStyleAvailable = Array.isArray(trial?.questions) && trial.questions.length > 0;
+  }
+
+  return NextResponse.json({ guide: guide ?? null, examStyleAvailable });
 }
 
 export async function POST(req: NextRequest, { params }: Params) {

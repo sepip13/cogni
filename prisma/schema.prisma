@@ -104,6 +104,7 @@ model Course {
   studyGuide           StudyGuide?
   examTrials           ExamTrial[]
   mockExams            MockExam[]
+  flashcards           Flashcard[]
 }
 
 enum CourseStatus {
@@ -330,6 +331,8 @@ model StudyGuideSection {
   status      SectionStatus @default(PENDING)
   contentMd   String?       @db.Text
   sources     Json?
+  quiz        Json?         // cached on-demand questions [{ q, type, marks, source, expected_answer, key_points }]
+  quizStatus  SectionStatus @default(PENDING)
   modelId     String?
   generatedAt DateTime?
 
@@ -341,6 +344,38 @@ enum SectionStatus {
   GENERATING
   READY
   FAILED
+}
+
+// ── Flashcards (active recall from the concept map + sections, SM-2 scheduled) ──
+model Flashcard {
+  id         String        @id @default(cuid())
+  courseId   String
+  course     Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  guideId    String? // the study guide it came from
+  conceptKey String? // mind-map node id → jump back to the brain
+  front      String        @db.Text
+  back       String        @db.Text
+  kind       FlashcardKind @default(QA)
+  sourceRef  Json? // [{ page }] like sections
+
+  // ── SM-2 scheduler state (one card = one schedule; owner-scoped via the course) ──
+  reps           Int       @default(0)
+  intervalDays   Int       @default(0)
+  ease           Float     @default(2.5) // SM-2 "easiness factor", floor 1.3
+  lapses         Int       @default(0)
+  dueAt          DateTime  @default(now())
+  lastReviewedAt DateTime?
+  suspended      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  @@index([courseId])
+  @@index([courseId, suspended, dueAt]) // the "due now" query
+  @@index([courseId, conceptKey]) // per-node mastery overlay
+}
+
+enum FlashcardKind {
+  QA
+  CLOZE
 }
 
 // ── Exam trainer (trial → split questions → similar exam + per-question explain) ──

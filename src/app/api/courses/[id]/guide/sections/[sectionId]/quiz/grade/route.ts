@@ -10,7 +10,7 @@ export const maxDuration = 120;
 
 const GRADE_LIMIT = { max: 100, windowMs: 10 * 60 * 1000 };
 
-type Params = { params: Promise<{ id: string; mockId: string }> };
+type Params = { params: Promise<{ id: string; sectionId: string }> };
 
 export async function POST(req: NextRequest, { params }: Params) {
   const session = await auth();
@@ -18,13 +18,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const userId = session.user.id;
-  const { id: courseId, mockId } = await params;
+  const { id: courseId, sectionId } = await params;
 
-  const mock = await prisma.mockExam.findUnique({
-    where: { id: mockId },
-    select: { courseId: true, questions: true, course: { select: { name: true, userId: true } } },
+  const section = await prisma.studyGuideSection.findUnique({
+    where: { id: sectionId },
+    select: {
+      quiz: true,
+      guide: { select: { courseId: true, course: { select: { name: true, userId: true } } } },
+    },
   });
-  if (!mock || mock.courseId !== courseId || mock.course.userId !== userId) {
+  if (!section || section.guide.courseId !== courseId || section.guide.course.userId !== userId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -41,13 +44,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "An answer is required." }, { status: 400 });
   }
 
-  const questions = (Array.isArray(mock.questions) ? mock.questions : []) as unknown as GradeQuestion[];
+  const questions = (Array.isArray(section.quiz) ? section.quiz : []) as unknown as GradeQuestion[];
   const question = questions[index];
   if (!question) {
     return NextResponse.json({ error: "Question not found." }, { status: 404 });
   }
 
-  const limit = rateLimit(`mockgrade:${userId}`, GRADE_LIMIT);
+  const limit = rateLimit(`sectionquizgrade:${userId}`, GRADE_LIMIT);
   if (!limit.ok) {
     return NextResponse.json(
       { error: "Too many answers graded. Please slow down." },
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const model = resolveModelForPlan(await isProUser(userId));
 
   try {
-    const grade = await gradeAnswer(mock.course.name, question, answer, model);
+    const grade = await gradeAnswer(section.guide.course.name, question, answer, model);
     return NextResponse.json(grade);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Grading failed. Please try again.";

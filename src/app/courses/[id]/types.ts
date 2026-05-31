@@ -149,6 +149,17 @@ export interface Briefing {
   sufficiency: { sufficient: boolean; missing: BriefingMissing[] };
 }
 
+// One cached, gradable question for the on-demand per-section quiz (same shape
+// as a mock-exam question — it plugs into the same grade loop).
+export interface SectionQuizQuestion {
+  q: string;
+  type?: string;
+  marks?: number | null;
+  source?: string;
+  expected_answer?: string;
+  key_points?: string[];
+}
+
 export interface GuideSection {
   id: string;
   order: number;
@@ -156,6 +167,8 @@ export interface GuideSection {
   title: string;
   status: GuideSectionStatus;
   contentMd: string | null;
+  quizStatus: GuideSectionStatus;
+  quiz: SectionQuizQuestion[] | null;
 }
 
 export interface StudyGuideData {
@@ -170,6 +183,33 @@ export interface StudyGuideData {
   error: string | null;
   updatedAt: string;
   sections: GuideSection[];
+}
+
+// ── Flashcards (active recall from the concept map) ───────────────────────
+
+export type FlashcardKind = "QA" | "CLOZE";
+export type FlashcardRating = "again" | "hard" | "good" | "easy";
+
+export interface Flashcard {
+  id: string;
+  conceptKey: string | null;
+  front: string;
+  back: string;
+  kind: FlashcardKind;
+  sourceRef: { page?: string | number }[] | null;
+  dueAt: string;
+}
+
+export interface FlashcardConceptCount {
+  total: number;
+  due: number;
+  lapses: number;
+}
+
+export interface FlashcardCounts {
+  total: number;
+  due: number;
+  perConcept: Record<string, FlashcardConceptCount>;
 }
 
 // ── Exam trainer ──────────────────────────────────────────────────────────

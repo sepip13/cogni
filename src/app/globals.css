@@ -306,6 +306,16 @@
   .pulse-glow {
     animation: pulseGlow 2s ease-in-out infinite;
   }
+
+  /* Mind-map "cards due" ring (SVG circle; opacity only → compositor-friendly,
+     and auto-stilled by the reduced-motion rule below). */
+  @keyframes nodeDuePulse {
+    0%, 100% { stroke-opacity: 0.3; }
+    50% { stroke-opacity: 0.95; }
+  }
+  .node-due-ring {
+    animation: nodeDuePulse 1.8s ease-in-out infinite;
+  }
 }
 
 /* Reduced motion */

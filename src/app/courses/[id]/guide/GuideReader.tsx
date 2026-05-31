@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import { SectionQuiz } from "./SectionQuiz";
 import type { GuideSection } from "../types";
 
 function NumberBadge({ n }: { n: number }) {
@@ -75,14 +76,94 @@ function GenerateButton({
   );
 }
 
+// Footer on every READY section: generate 1–2 exam-style questions on demand,
+// then answer + grade them inline. Cheap by design — one tap, never a batch.
+function SectionQuizFooter({
+  courseId,
+  section,
+  examStyleAvailable,
+  onQuiz,
+}: {
+  courseId: string;
+  section: GuideSection;
+  examStyleAvailable: boolean;
+  onQuiz: (id: string) => void;
+}) {
+  if (section.quizStatus === "READY" && section.quiz && section.quiz.length > 0) {
+    return (
+      <SectionQuiz
+        courseId={courseId}
+        sectionId={section.id}
+        questions={section.quiz}
+        examStyle={examStyleAvailable}
+      />
+    );
+  }
+
+  const failed = section.quizStatus === "FAILED";
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        paddingTop: 14,
+        borderTop: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: failed ? "var(--high)" : "var(--text)" }}>
+          {failed ? "Couldn't write questions for this part." : "Test yourself on this part"}
+        </span>
+        {!failed && (
+          <span style={{ display: "block", fontSize: 12, color: "var(--text-faint)", marginTop: 1 }}>
+            {examStyleAvailable ? "Exam-style — matched to your trial paper" : "1–2 quick practice questions"}
+          </span>
+        )}
+      </div>
+      {section.quizStatus === "GENERATING" ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, color: "var(--text-dim)" }}>
+          <Spinner /> Writing questions…
+        </span>
+      ) : (
+        <button
+          onClick={() => onQuiz(section.id)}
+          style={{
+            padding: "9px 16px",
+            background: "var(--surface-2)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: 9,
+            fontSize: 13,
+            fontWeight: 700,
+            color: "var(--text)",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {failed ? "Try again" : "Test me on this part"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SectionCard({
+  courseId,
   index,
   section,
+  examStyleAvailable,
   onGenerate,
+  onQuiz,
 }: {
+  courseId: string;
   index: number;
   section: GuideSection;
+  examStyleAvailable: boolean;
   onGenerate: (id: string) => void;
+  onQuiz: (id: string) => void;
 }) {
   return (
     <article
@@ -108,9 +189,17 @@ function SectionCard({
       </div>
 
       {section.status === "READY" && section.contentMd ? (
-        <div className="chat-markdown" style={{ fontSize: 14, lineHeight: 1.65, color: "var(--text)" }}>
-          <ReactMarkdown>{section.contentMd}</ReactMarkdown>
-        </div>
+        <>
+          <div className="chat-markdown" style={{ fontSize: 14, lineHeight: 1.65, color: "var(--text)" }}>
+            <ReactMarkdown>{section.contentMd}</ReactMarkdown>
+          </div>
+          <SectionQuizFooter
+            courseId={courseId}
+            section={section}
+            examStyleAvailable={examStyleAvailable}
+            onQuiz={onQuiz}
+          />
+        </>
       ) : section.status === "PENDING" ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "var(--text-dim)" }}>Not written yet.</span>
@@ -129,11 +218,17 @@ function SectionCard({
 }
 
 export function GuideReader({
+  courseId,
   sections,
+  examStyleAvailable,
   onGenerate,
+  onQuiz,
 }: {
+  courseId: string;
   sections: GuideSection[];
+  examStyleAvailable: boolean;
   onGenerate: (id: string) => void;
+  onQuiz: (id: string) => void;
 }) {
   if (sections.length === 0) return null;
   const readyCount = sections.filter((s) => s.status === "READY").length;
@@ -150,7 +245,15 @@ export function GuideReader({
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {sections.map((s, i) => (
-          <SectionCard key={s.id} index={i + 1} section={s} onGenerate={onGenerate} />
+          <SectionCard
+            key={s.id}
+            courseId={courseId}
+            index={i + 1}
+            section={s}
+            examStyleAvailable={examStyleAvailable}
+            onGenerate={onGenerate}
+            onQuiz={onQuiz}
+          />
         ))}
       </div>
     </section>
