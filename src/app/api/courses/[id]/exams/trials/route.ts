@@ -101,7 +101,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (file && file.size > 0) {
     const type = file.type || "application/octet-stream";
     if (!isAllowedUpload(file.name, type)) {
-      return NextResponse.json({ error: "Unsupported file type. Use PDF, Word, PowerPoint, or text." }, { status: 400 });
+      return NextResponse.json({ error: "Unsupported file type. Use PDF, Word, Excel, or text." }, { status: 400 });
     }
     if (file.size > MAX_FILE_BYTES) {
       return NextResponse.json({ error: "File exceeds the 20 MB limit." }, { status: 400 });

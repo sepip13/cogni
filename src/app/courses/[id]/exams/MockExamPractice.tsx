@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { McqCard, isMcq } from "../McqCard";
 import type { ExamGrade, MockExamQuestion } from "../types";
 
 const VERDICT_STYLES: Record<ExamGrade["verdict"], { bg: string; color: string; label: string }> = {
@@ -94,7 +95,9 @@ export function MockExamPractice({
         </p>
       )}
 
-      {!result ? (
+      {isMcq(q) ? (
+        <McqCard key={current} question={q} onNext={current + 1 < questions.length ? next : undefined} />
+      ) : !result ? (
         <form onSubmit={submit}>
           <textarea
             value={answer}

@@ -46,13 +46,20 @@ type QuizQuestion = z.infer<typeof MockQuestionSchema>;
 
 function buildSystemPrompt(courseName: string, lang: string, count: number, hasTrial: boolean): string {
   const mimic = hasTrial
-    ? " Match the STYLE, format, difficulty and mark weighting of the trial exam below, but ask DIFFERENT questions — never copy the trial."
+    ? " Match the difficulty and mark weighting of the trial exam below, but ask DIFFERENT questions."
     : "";
-  return `You are an exam setter for ${courseName}. Write exactly ${count} NEW practice question(s) about ONLY this one topic: the concept given below.${mimic}
-Ground every question strictly in the material provided; if the material doesn't support a good question, say so in the question text instead of inventing facts or page numbers. Write in ${lang}.
-For each question give: the question, its type (mcq|short|essay|numeric), its marks, where in the material it comes from, a model expected answer, and the key points a strong answer must contain.
+  return `You are an exam setter for ${courseName}. Write exactly ${count} NEW MULTIPLE-CHOICE question(s) about ONLY this one topic: the concept given below. EVERY question must be multiple choice.${mimic}
+Ground every question strictly in the material provided; if the material can't support a fair question, say so in the question stem instead of inventing facts. Write in ${lang}.
+For EACH question provide:
+- "q": the question stem
+- "options": exactly 4 distinct plain-text choices (NO "A)"/"B)" prefixes), with exactly ONE correct
+- "answer": the full text of the correct option, copied EXACTLY from "options"
+- "expected_answer": a one-sentence explanation of why it's correct
+- "key_points": the facts needed to answer it
+- "type": "mcq", plus "marks" if applicable
+Make the wrong options plausible (common misconceptions), never absurd.
 Return JSON only:
-{ "questions": [{ "q": "...", "type": "short", "marks": 5, "source": "...", "expected_answer": "...", "key_points": ["..."] }] }`;
+{ "questions": [{ "q": "...", "type": "mcq", "marks": 1, "options": ["...", "...", "...", "..."], "answer": "...", "source": "...", "expected_answer": "...", "key_points": ["..."] }] }`;
 }
 
 /**

@@ -49,6 +49,7 @@ const TrialQuestionSchema = z.object({
   text: z.string().min(1),
   type: z.string().catch("other"),
   marks: z.coerce.number().nullable().optional().catch(null),
+  options: z.array(z.string()).catch([]),
 });
 
 const SplitSchema = z.object({
@@ -57,8 +58,8 @@ const SplitSchema = z.object({
 
 function splitSystem(courseName: string): string {
   return `You are parsing an exam paper for ${courseName} into its individual questions.
-Extract EACH question with: its number, the full question text, its type (mcq|short|essay|numeric|other), and its marks if shown. Do NOT answer them, and do not invent questions that aren't there.
-Return JSON only: { "questions": [{ "num": "1", "text": "...", "type": "short", "marks": 5 }] }`;
+Extract EACH question with: its number, the full question text, its type (mcq|short|essay|numeric|other), its marks if shown, and — for multiple-choice questions — the array of answer options (plain text, no letter prefixes). Do NOT answer them, and do not invent questions that aren't there.
+Return JSON only: { "questions": [{ "num": "1", "text": "...", "type": "mcq", "marks": 1, "options": ["...", "..."] }] }`;
 }
 
 type TrialQuestion = z.infer<typeof TrialQuestionSchema>;
@@ -151,13 +152,17 @@ export async function splitTrialQuestions(trialId: string, model: string): Promi
 // ── Generate a similar, gradable practice exam ────────────────────────────────
 
 // Shared with the on-demand section-quiz generator (same gradable shape).
+// Multiple-choice fields (`options` + `answer`) are optional so older cached
+// questions without them still validate; new generations always include them.
 export const MockQuestionSchema = z.object({
   q: z.string().min(1),
-  type: z.string().catch("short"),
+  type: z.string().catch("mcq"),
   marks: z.coerce.number().nullable().optional().catch(null),
   source: z.string().catch(""),
   expected_answer: z.string().catch(""),
   key_points: z.array(z.string()).catch([]),
+  options: z.array(z.string()).catch([]),
+  answer: z.string().catch(""),
 });
 
 const MockSchema = z.object({
@@ -172,11 +177,18 @@ function mockSystem(courseName: string, count: number, batchIdx: number, totalBa
     totalBatches > 1
       ? ` This is part ${batchIdx + 1} of ${totalBatches} of one exam — cover DIFFERENT parts of the material than the other parts and never repeat a question.`
       : "";
-  return `You are an exam setter for ${courseName}. Study the TRIAL EXAM's structure: question types, difficulty, mark distribution, and phrasing style.
-Produce NEW practice questions on the SAME course material that mirror that style but are DIFFERENT (never copy the trial verbatim). Produce exactly ${count} question(s).${distinct} Ground every question in the course material.
-For each question include a model expected answer and the key points a strong answer must contain.
+  return `You are an exam setter for ${courseName}. Study the TRIAL EXAM's difficulty, mark weighting, and phrasing style.
+Produce exactly ${count} NEW MULTIPLE-CHOICE question(s) on the SAME course material — EVERY question must be multiple choice.${distinct} Ground every question in the course material; never copy the trial verbatim.
+For EACH question provide:
+- "q": the question stem
+- "options": an array of exactly 4 distinct answer choices as plain text (NO "A)"/"B)" prefixes), with exactly ONE correct
+- "answer": the full text of the correct option, copied EXACTLY from "options"
+- "expected_answer": one or two sentences explaining why that option is correct
+- "key_points": the facts a student needs to know to answer it
+- "type": "mcq", plus "marks" if applicable
+Make the wrong options plausible (common misconceptions), never obviously absurd.
 Return JSON only:
-{ "title": "...", "questions": [{ "q": "...", "type": "mcq|short|essay|numeric", "marks": 5, "source": "where in the material", "expected_answer": "...", "key_points": ["..."] }] }`;
+{ "title": "...", "questions": [{ "q": "...", "type": "mcq", "marks": 1, "options": ["...", "...", "...", "..."], "answer": "...", "source": "where in the material", "expected_answer": "...", "key_points": ["..."] }] }`;
 }
 
 /** Generates ONE batch of mock questions; returns [] on failure (skip, not fatal). */

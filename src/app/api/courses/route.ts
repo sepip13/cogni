@@ -16,8 +16,11 @@ const ALLOWED_TYPES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
   "application/msword",
   "application/vnd.ms-powerpoint",
+  "application/vnd.ms-excel", // .xls / some browsers' .xlsx / .csv
+  "text/csv",
   "text/plain",
 ]);
 
@@ -275,5 +278,5 @@ async function processCourseMaterials(
 
 function isAllowedByExtension(fileName: string): boolean {
   const ext = fileName.split(".").pop()?.toLowerCase();
-  return ["pdf", "doc", "docx", "ppt", "pptx", "txt"].includes(ext ?? "");
+  return ["pdf", "doc", "docx", "ppt", "pptx", "xlsx", "xls", "csv", "txt"].includes(ext ?? "");
 }

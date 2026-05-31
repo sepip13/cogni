@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { McqCard, isMcq } from "../McqCard";
 import type { ExamGrade, SectionQuizQuestion } from "../types";
 
 // Mirrors the mock-exam practice UX (answer → grade → feedback), but scoped to
@@ -106,7 +107,9 @@ export function SectionQuiz({
         </p>
       )}
 
-      {!result ? (
+      {isMcq(q) ? (
+        <McqCard key={current} question={q} onNext={current + 1 < questions.length ? next : undefined} />
+      ) : !result ? (
         <form onSubmit={submit}>
           <textarea
             value={answer}

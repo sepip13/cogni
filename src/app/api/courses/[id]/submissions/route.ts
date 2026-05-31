@@ -139,7 +139,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const type = file.type || "application/octet-stream";
     if (!isAllowedUpload(file.name, type)) {
       return NextResponse.json(
-        { error: "Unsupported file type. Use PDF, Word, PowerPoint, or text." },
+        { error: "Unsupported file type. Use PDF, Word, PowerPoint, Excel, or text." },
         { status: 400 }
       );
     }

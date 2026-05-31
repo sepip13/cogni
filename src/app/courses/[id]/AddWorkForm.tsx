@@ -134,12 +134,12 @@ export function AddWorkForm({
 
       <div>
         <label htmlFor="work-file" style={fieldLabel}>
-          File <span style={{ textTransform: "none", fontWeight: 500, color: "var(--text-faint)" }}>(PDF, Word, PowerPoint, or text · max 20 MB)</span>
+          File <span style={{ textTransform: "none", fontWeight: 500, color: "var(--text-faint)" }}>(PDF, Word, PowerPoint, Excel, or text · max 20 MB)</span>
         </label>
         <input
           id="work-file"
           type="file"
-          accept=".pdf,.doc,.docx,.ppt,.pptx,.txt"
+          accept=".pdf,.doc,.docx,.ppt,.pptx,.xlsx,.xls,.csv,.txt"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           style={{ ...inputStyle, padding: "8px 12px", cursor: "pointer" }}
         />

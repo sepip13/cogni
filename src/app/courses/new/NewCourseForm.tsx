@@ -350,13 +350,13 @@ export function NewCourseForm({ userPlan, defaultQualityTier }: NewCourseFormPro
             letterSpacing: "0.08em",
           }}
         >
-          PDF · DOC · DOCX · PPT · PPTX · TXT
+          PDF · DOC · DOCX · PPT · PPTX · XLSX · CSV · TXT
         </div>
         <input
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+          accept=".pdf,.doc,.docx,.ppt,.pptx,.xlsx,.xls,.csv,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain"
           onChange={(e) => e.target.files && addFiles(e.target.files)}
           onClick={(e) => e.stopPropagation()}
           style={{ display: "none" }}

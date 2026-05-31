@@ -15,12 +15,15 @@ export const ALLOWED_TYPES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
   "application/msword",
   "application/vnd.ms-powerpoint",
+  "application/vnd.ms-excel", // .xls (and the MIME some browsers report for .xlsx/.csv)
+  "text/csv",
   "text/plain",
 ]);
 
-const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx", "ppt", "pptx", "txt"];
+const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx", "ppt", "pptx", "xlsx", "xls", "csv", "txt"];
 
 export function getUploadDir(): string {
   return (

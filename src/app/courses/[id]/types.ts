@@ -158,6 +158,8 @@ export interface SectionQuizQuestion {
   source?: string;
   expected_answer?: string;
   key_points?: string[];
+  options?: string[]; // multiple-choice answer choices (1 correct)
+  answer?: string; // exact text of the correct option
 }
 
 export interface GuideSection {
@@ -222,6 +224,7 @@ export interface TrialQuestion {
   text: string;
   type?: string;
   marks?: number | null;
+  options?: string[]; // answer choices, when the parsed question is multiple-choice
 }
 
 export interface MockExamQuestion {
@@ -231,6 +234,8 @@ export interface MockExamQuestion {
   source?: string;
   expected_answer?: string;
   key_points?: string[];
+  options?: string[]; // multiple-choice answer choices (1 correct)
+  answer?: string; // exact text of the correct option
 }
 
 export interface MockExamSummary {

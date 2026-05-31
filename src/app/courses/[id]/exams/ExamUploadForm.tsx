@@ -77,8 +77,8 @@ export function ExamUploadForm({
         <input id="trial-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. 2024 midterm paper" maxLength={200} style={inputStyle} />
       </div>
       <div>
-        <label htmlFor="trial-file" style={labelStyle}>Exam file <span style={{ textTransform: "none", fontWeight: 500, color: "var(--text-faint)" }}>(PDF, Word, or text · max 20 MB)</span></label>
-        <input id="trial-file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ ...inputStyle, padding: "8px 12px", cursor: "pointer" }} />
+        <label htmlFor="trial-file" style={labelStyle}>Exam file <span style={{ textTransform: "none", fontWeight: 500, color: "var(--text-faint)" }}>(PDF, Word, Excel, or text · max 20 MB)</span></label>
+        <input id="trial-file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xlsx,.xls,.csv,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ ...inputStyle, padding: "8px 12px", cursor: "pointer" }} />
       </div>
       <div>
         <label htmlFor="trial-paste" style={labelStyle}>Or paste the questions</label>

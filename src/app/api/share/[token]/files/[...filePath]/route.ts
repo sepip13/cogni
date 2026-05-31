@@ -14,6 +14,9 @@ const MIME_MAP: Record<string, string> = {
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   doc: "application/msword",
   ppt: "application/vnd.ms-powerpoint",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
+  csv: "text/csv; charset=utf-8",
   txt: "text/plain; charset=utf-8",
 };
 
