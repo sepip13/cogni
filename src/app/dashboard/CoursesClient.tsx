@@ -52,6 +52,81 @@ const STATUS_BADGE: Record<
   FAILED:     { bg: "rgba(255,107,107,0.12)", color: "var(--high)",   label: "Failed" },
 };
 
+// ── Due-this-week banner (cross-course deliverables; in-app reminder) ──────────
+
+interface UpcomingItem {
+  id: string;
+  title: string;
+  courseId: string;
+  courseName: string;
+  weight: number | null;
+  dueDate: string;
+  daysUntilDue: number;
+}
+
+function dueLabel(days: number): { text: string; color: string } {
+  if (days < 0) return { text: `${Math.abs(days)}d overdue`, color: "var(--high)" };
+  if (days === 0) return { text: "due today", color: "var(--high)" };
+  if (days === 1) return { text: "due tomorrow", color: "var(--med)" };
+  return { text: `due in ${days}d`, color: days <= 7 ? "var(--med)" : "var(--text-dim)" };
+}
+
+function DueThisWeekBanner() {
+  const [items, setItems] = useState<UpcomingItem[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/deliverables/upcoming")
+      .then((r) => (r.ok ? (r.json() as Promise<{ items: UpcomingItem[] }>) : Promise.reject()))
+      .then((d) => {
+        if (alive) setItems(d.items);
+      })
+      .catch(() => {
+        if (alive) setItems([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!items || items.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 12,
+        padding: "14px 18px",
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--text-faint)", marginBottom: 10 }}>
+        Due soon
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {items.map((it) => {
+          const due = dueLabel(it.daysUntilDue);
+          return (
+            <Link
+              key={it.id}
+              href={`/courses/${it.courseId}#assignment-buddy`}
+              className="hover-text"
+              style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text)", textDecoration: "none", flexWrap: "wrap" }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: due.color, flexShrink: 0 }} aria-hidden="true" />
+              <span style={{ fontWeight: 600 }}>{it.title}</span>
+              <span style={{ color: "var(--text-faint)" }}>· {it.courseName}</span>
+              {it.weight != null && <span style={{ color: "var(--text-faint)" }}>· {it.weight}%</span>}
+              <span style={{ color: due.color, fontWeight: 600, marginLeft: "auto" }}>{due.text}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
 function DashboardSkeleton() {
@@ -425,6 +500,9 @@ export function CoursesClient({
           </button>
         </div>
       )}
+
+      {/* Cross-course deadline reminders (in-app only) */}
+      <DueThisWeekBanner />
 
       {/* Header */}
       <div

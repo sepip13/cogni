@@ -22,6 +22,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       examDate: true,
       status: true,
       totalPrepTimeMinutes: true,
+      coverImageUrl: true,
       createdAt: true,
       updatedAt: true,
       topics: {

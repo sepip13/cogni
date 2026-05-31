@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { MyWorkSection } from "./MyWorkSection";
+import { AssignmentBuddy } from "./AssignmentBuddy";
+import { CourseCover } from "./CourseCover";
 import { FeatureLauncher } from "./FeatureLauncher";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import type { CourseData } from "./types";
@@ -87,6 +89,9 @@ export function ReadyView({ course }: { course: CourseData }) {
           {course.name}
         </span>
       </nav>
+
+      {/* AI cover art — on-demand FLUX banner */}
+      <CourseCover courseId={course.id} courseName={course.name} initialUrl={course.coverImageUrl ?? null} />
 
       {/* Header row — flex-wrap lets buttons stack below the title on narrow screens */}
       <div
@@ -475,6 +480,11 @@ export function ReadyView({ course }: { course: CourseData }) {
       {/* Student work — distinct from course material / study plan */}
       <div id="my-work" style={{ scrollMarginTop: 80 }}>
         <MyWorkSection courseId={course.id} />
+      </div>
+
+      {/* Assignment buddy — track + nail every assessed deliverable */}
+      <div id="assignment-buddy" style={{ scrollMarginTop: 80 }}>
+        <AssignmentBuddy courseId={course.id} />
       </div>
 
       {shareOpen && <ShareDialog courseId={course.id} onClose={() => setShareOpen(false)} />}

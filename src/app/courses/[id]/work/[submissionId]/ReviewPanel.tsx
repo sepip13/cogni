@@ -36,18 +36,27 @@ function CriterionRow({
   scored,
   max,
   comment,
+  band,
 }: {
   criterion: string;
   scored: number;
   max: number;
   comment: string;
+  band?: string;
 }) {
   const pct = max > 0 ? Math.min(100, Math.max(0, (scored / max) * 100)) : 0;
   const color = pct >= 80 ? "var(--success)" : pct >= 50 ? "var(--med)" : "var(--high)";
   return (
     <div style={{ padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
-        <span style={{ fontSize: 14, fontWeight: 600 }}>{criterion}</span>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>
+          {criterion}
+          {band && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-faint)", marginLeft: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {band}
+            </span>
+          )}
+        </span>
         <span
           style={{
             fontSize: 13,
@@ -125,19 +134,55 @@ export function ReviewPanel({ review }: { review: SubmissionReview }) {
         <div>
           <div
             style={{
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: "0.07em",
-              color: "var(--accent)",
-              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
               marginBottom: 6,
+              flexWrap: "wrap",
             }}
           >
-            Rubric review
+            <span
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                color: "var(--accent)",
+                fontWeight: 700,
+              }}
+            >
+              Rubric review
+            </span>
+            {review.band && (
+              <span style={{ fontSize: 15, fontWeight: 800, color: "var(--success)" }}>
+                {review.band}
+                {review.percentage != null && (
+                  <span style={{ fontSize: 13, color: "var(--text-dim)", fontWeight: 600 }}>
+                    {" "}· {Math.round(review.percentage)}%
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           <p style={{ fontSize: 14, color: "var(--text-dim)", lineHeight: 1.55 }}>{review.summary}</p>
         </div>
       </div>
+
+      {review.gapToNextBand && (
+        <div
+          style={{
+            background: "color-mix(in oklab, var(--med) 12%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--med) 30%, transparent)",
+            borderRadius: 10,
+            padding: "12px 16px",
+            marginBottom: 18,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--med)", marginBottom: 4 }}>
+            → {review.nextBand ? `To reach ${review.nextBand}` : "To move up a band"}
+          </div>
+          <p style={{ fontSize: 13.5, color: "var(--text)", lineHeight: 1.55 }}>{review.gapToNextBand}</p>
+        </div>
+      )}
 
       {review.rubricBreakdown.length > 0 && (
         <div style={{ marginTop: 8 }}>

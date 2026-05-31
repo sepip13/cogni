@@ -94,6 +94,12 @@ model Course {
   rawText              String?       @db.Text
   plan                 Json?
   totalPrepTimeMinutes Int?
+  // ── Assignment Buddy: deliverable extraction status (mirrors StudyGuide.briefingStatus) ──
+  deliverablesStatus   SectionStatus @default(PENDING)
+  deliverablesError    String?       @db.Text
+  // ── AI cover art (FLUX.1-schnell via NVIDIA) ──
+  coverImageUrl        String?
+  coverImagePrompt     String?       @db.Text
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   files                SourceFile[]
@@ -105,6 +111,7 @@ model Course {
   examTrials           ExamTrial[]
   mockExams            MockExam[]
   flashcards           Flashcard[]
+  deliverables         CourseDeliverable[]
 }
 
 enum CourseStatus {
@@ -254,12 +261,16 @@ model Submission {
   parsedText String?            @db.Text
   pageCount  Int?
   questions  Json? // cached personalized examiner questions
+  // ── Assignment Buddy: a submission may fulfill a tracked deliverable ──
+  deliverableId String?
+  deliverable   CourseDeliverable? @relation(fields: [deliverableId], references: [id], onDelete: SetNull)
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
   reviews    SubmissionReview[]
 
   @@index([courseId])
   @@index([userId])
+  @@index([deliverableId])
 }
 
 enum SubmissionKind {
@@ -268,6 +279,9 @@ enum SubmissionKind {
   PORTFOLIO
   ESSAY
   REPORT
+  CASE_STUDY
+  PRESENTATION
+  REFLECTION
   OTHER
 }
 
@@ -282,16 +296,62 @@ model SubmissionReview {
   id              String     @id @default(cuid())
   submissionId    String
   submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  scoreOutOf10    Float // 0.0 – 10.0
-  rubricBreakdown Json // [{ criterion, scored, max, comment }]
+  scoreOutOf10    Float // 0.0 – 10.0 (kept for back-compat with ScoreRing + history)
+  rubricBreakdown Json // [{ criterion, scored, max, comment, band? }]
   strengths       Json // string[]
   gaps            Json // string[]  — what's missing for 10/10
   actionItems     Json // string[]  — concrete steps to complete
   summary         String     @db.Text
+  // ── Assignment Buddy: band-aware grading (only set when graded against a rubric/scheme) ──
+  percentage      Float?     // overall % when graded against a real rubric
+  band            String?    // achieved band (e.g. "Merit", "2:1", "B")
+  nextBand        String?    // the band one step up, if any
+  gapToNextBand   String?    @db.Text // exact change needed to reach nextBand
   modelId         String
   createdAt       DateTime   @default(now())
 
   @@index([submissionId])
+}
+
+// ── Assignment Buddy: every assessed deliverable a student must prepare/submit ──
+model CourseDeliverable {
+  id            String            @id @default(cuid())
+  courseId      String
+  course        Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title         String
+  kind          SubmissionKind    @default(ASSIGNMENT)
+  status        DeliverableStatus @default(NOT_STARTED)
+  source        DeliverableSource @default(EXTRACTED)
+  weight        Float? // % of final grade (0–100), null if not stated
+  dueDate       DateTime?
+  format        String? // "2500-word report", "15-min group presentation + slides"
+  unit          String? // "words" | "minutes" | "pages" | null
+  unitLimit     Int?
+  description   String?           @db.Text
+  requirements  Json? // string[] — concrete must-dos (checklist seeds)
+  rubric        Json? // [{ criterion, max, weight?, levels?: [{ band, descriptor, points? }] }]
+  gradingScheme Json? // { kind, bands?: [{ name, min }], passMark?, totalPoints? }
+  sourceRef     Json? // [{ page }]
+  confidence    Float? // 0–1 extraction confidence
+  order         Int               @default(0)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  submissions   Submission[]
+
+  @@index([courseId])
+  @@index([courseId, dueDate])
+}
+
+enum DeliverableStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+enum DeliverableSource {
+  EXTRACTED
+  MANUAL
 }
 
 // ── Study guide (concept map + progressive sections) ──────────

@@ -19,6 +19,9 @@ const KIND_LABELS: Record<SubmissionKind, string> = {
   PORTFOLIO: "Portfolio",
   ESSAY: "Essay",
   REPORT: "Report",
+  CASE_STUDY: "Case study",
+  PRESENTATION: "Presentation",
+  REFLECTION: "Reflection",
   OTHER: "Other",
 };
 

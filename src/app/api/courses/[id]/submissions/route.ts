@@ -17,6 +17,9 @@ const SUBMISSION_KINDS = [
   "PORTFOLIO",
   "ESSAY",
   "REPORT",
+  "CASE_STUDY",
+  "PRESENTATION",
+  "REFLECTION",
   "OTHER",
 ] as const;
 type SubmissionKind = (typeof SUBMISSION_KINDS)[number];
@@ -120,6 +123,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Invalid submission type." }, { status: 400 });
   }
 
+  // Optional link to a tracked deliverable — verified to belong to this course.
+  const rawDeliverableId = (formData.get("deliverableId") as string | null)?.trim() || null;
+  let deliverableId: string | null = null;
+  if (rawDeliverableId) {
+    const deliverable = await prisma.courseDeliverable.findUnique({
+      where: { id: rawDeliverableId },
+      select: { courseId: true, course: { select: { userId: true } } },
+    });
+    if (!deliverable || deliverable.courseId !== courseId || deliverable.course.userId !== userId) {
+      return NextResponse.json({ error: "Linked deliverable not found." }, { status: 400 });
+    }
+    deliverableId = rawDeliverableId;
+  }
+
   const pasteText = ((formData.get("pasteText") as string | null) ?? "")
     .slice(0, MAX_PASTE_CHARS)
     .trim();
@@ -162,6 +179,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       userId,
       title,
       kind,
+      deliverableId,
       status: "IN_PROGRESS",
       fileName: filePayload?.name ?? null,
       fileType: filePayload?.type ?? null,

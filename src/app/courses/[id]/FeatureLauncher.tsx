@@ -70,6 +70,16 @@ function IconCalendar() {
   );
 }
 
+function IconClipboard() {
+  return (
+    <svg {...SVG} aria-hidden="true">
+      <rect x="6" y="4.5" width="12" height="16" rx="2" />
+      <path d="M9 4.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 4.5v1.2a.8.8 0 0 1-.8.8H9.8a.8.8 0 0 1-.8-.8z" />
+      <path d="M9 11l1.4 1.4L13 9.6M9 15.5h5" />
+    </svg>
+  );
+}
+
 function IconChat() {
   return (
     <svg {...SVG} aria-hidden="true">
@@ -182,6 +192,7 @@ const TILE_STYLE: React.CSSProperties = {
 
 export function FeatureLauncher({ course }: { course: CourseData }) {
   const [due, setDue] = useState<number | null>(null);
+  const [deliverablesDue, setDeliverablesDue] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -189,6 +200,16 @@ export function FeatureLauncher({ course }: { course: CourseData }) {
       .then((r) => (r.ok ? (r.json() as Promise<{ counts?: { due?: number } }>) : Promise.reject()))
       .then((d) => {
         if (alive) setDue(d.counts?.due ?? 0);
+      })
+      .catch(() => {});
+    fetch(`/api/courses/${course.id}/deliverables`)
+      .then((r) =>
+        r.ok
+          ? (r.json() as Promise<{ counts?: { overdue?: number; dueSoon?: number } }>)
+          : Promise.reject()
+      )
+      .then((d) => {
+        if (alive) setDeliverablesDue((d.counts?.overdue ?? 0) + (d.counts?.dueSoon ?? 0));
       })
       .catch(() => {});
     return () => {
@@ -234,6 +255,15 @@ export function FeatureLauncher({ course }: { course: CourseData }) {
       color: "var(--success)",
       icon: <IconWork />,
       anchor: "my-work",
+    },
+    {
+      key: "assignments",
+      title: "Assignment buddy",
+      desc: "Track + nail every deliverable",
+      color: "var(--med)",
+      icon: <IconClipboard />,
+      anchor: "assignment-buddy",
+      badge: deliverablesDue ?? undefined,
     },
     {
       key: "calendar",

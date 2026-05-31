@@ -9,6 +9,9 @@ const KIND_OPTIONS: { value: SubmissionKind; label: string }[] = [
   { value: "PORTFOLIO", label: "Portfolio" },
   { value: "ESSAY", label: "Essay" },
   { value: "REPORT", label: "Report" },
+  { value: "CASE_STUDY", label: "Case study" },
+  { value: "PRESENTATION", label: "Presentation" },
+  { value: "REFLECTION", label: "Reflection" },
   { value: "OTHER", label: "Other" },
 ];
 
@@ -38,13 +41,20 @@ export function AddWorkForm({
   courseId,
   onCancel,
   onCreated,
+  deliverableId,
+  initialKind = "ASSIGNMENT",
+  initialTitle = "",
 }: {
   courseId: string;
   onCancel: () => void;
   onCreated: (submissionId: string) => void;
+  /** When set, the created submission is linked to this deliverable (rubric-graded). */
+  deliverableId?: string;
+  initialKind?: SubmissionKind;
+  initialTitle?: string;
 }) {
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<SubmissionKind>("ASSIGNMENT");
+  const [title, setTitle] = useState(initialTitle);
+  const [kind, setKind] = useState<SubmissionKind>(initialKind);
   const [file, setFile] = useState<File | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -62,6 +72,7 @@ export function AddWorkForm({
       const fd = new FormData();
       fd.set("title", title.trim());
       fd.set("kind", kind);
+      if (deliverableId) fd.set("deliverableId", deliverableId);
       if (file) fd.set("file", file);
       if (pasteText.trim()) fd.set("pasteText", pasteText.trim());
 

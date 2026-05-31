@@ -20,6 +20,10 @@ const MIME_MAP: Record<string, string> = {
   xls: "application/vnd.ms-excel",
   csv: "text/csv; charset=utf-8",
   txt: "text/plain; charset=utf-8",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
 };
 
 export async function GET(

@@ -18,6 +18,7 @@ export interface CourseData {
   examDate: string | null;
   status: "PROCESSING" | "READY" | "FAILED";
   totalPrepTimeMinutes: number | null;
+  coverImageUrl?: string | null;
   topics: TopicRow[];
   files?: { fileName: string }[];
 }
@@ -30,6 +31,9 @@ export type SubmissionKind =
   | "PORTFOLIO"
   | "ESSAY"
   | "REPORT"
+  | "CASE_STUDY"
+  | "PRESENTATION"
+  | "REFLECTION"
   | "OTHER";
 
 export type SubmissionStatus = "IN_PROGRESS" | "READY_FOR_REVIEW" | "REVIEWED";
@@ -66,6 +70,7 @@ export interface RubricCriterion {
   scored: number;
   max: number;
   comment: string;
+  band?: string;
 }
 
 export interface SubmissionReview {
@@ -76,8 +81,69 @@ export interface SubmissionReview {
   gaps: string[];
   actionItems: string[];
   summary: string;
+  percentage?: number | null;
+  band?: string | null;
+  nextBand?: string | null;
+  gapToNextBand?: string | null;
   modelId: string;
   createdAt: string;
+}
+
+// ── Assignment Buddy: deliverables ────────────────────────────────────────
+export type { GradingScheme, GradingBand } from "@/lib/grade-projection";
+
+export type DeliverableStatus = "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED" | "GRADED";
+export type DeliverableSource = "EXTRACTED" | "MANUAL";
+
+export interface RubricLevel {
+  band: string;
+  descriptor?: string;
+  points?: number | null;
+}
+
+export interface DeliverableRubricCriterion {
+  criterion: string;
+  max?: number | null;
+  weight?: number | null;
+  levels?: RubricLevel[];
+}
+
+export interface DeliverableWithProgress {
+  id: string;
+  title: string;
+  kind: SubmissionKind;
+  status: DeliverableStatus;
+  storedStatus: DeliverableStatus;
+  source: DeliverableSource;
+  weight: number | null;
+  dueDate: string | null;
+  format: string | null;
+  unit: string | null;
+  unitLimit: number | null;
+  description: string | null;
+  requirements: string[];
+  rubric: DeliverableRubricCriterion[];
+  gradingScheme: import("@/lib/grade-projection").GradingScheme | null;
+  sourceRef: { page?: string | number }[] | null;
+  confidence: number | null;
+  order: number;
+  submissionCount: number;
+  bestPercentage: number | null;
+  band: string | null;
+  daysUntilDue: number | null;
+}
+
+export interface DeliverableCounts {
+  total: number;
+  dueSoon: number;
+  overdue: number;
+  graded: number;
+}
+
+export interface DeliverablesResponse {
+  deliverables: DeliverableWithProgress[];
+  status: GuideSectionStatus;
+  counts: DeliverableCounts;
 }
 
 // ── Personalized examiner questions ───────────────────────────────────────
