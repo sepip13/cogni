@@ -4,13 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StudyGuideView } from "./StudyGuideView";
 
-type PageProps = { params: Promise<{ id: string }> };
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+};
 
-export default async function GuidePage({ params }: PageProps) {
+export default async function GuidePage({ params, searchParams }: PageProps) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
 
   const { id: courseId } = await params;
+  const sp = await searchParams;
+  const initialReview = typeof sp.review === "string" ? sp.review : null;
 
   const course = await prisma.course.findUnique({
     where: { id: courseId },
@@ -23,7 +28,7 @@ export default async function GuidePage({ params }: PageProps) {
   return (
     <AppLayout>
       <div className="container">
-        <StudyGuideView courseId={courseId} courseName={course.name} />
+        <StudyGuideView courseId={courseId} courseName={course.name} initialReview={initialReview} />
       </div>
     </AppLayout>
   );

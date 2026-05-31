@@ -186,7 +186,15 @@ function CenterState({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function StudyGuideView({ courseId, courseName }: { courseId: string; courseName: string }) {
+export function StudyGuideView({
+  courseId,
+  courseName,
+  initialReview = null,
+}: {
+  courseId: string;
+  courseName: string;
+  initialReview?: string | null;
+}) {
   const [guide, setGuide] = useState<StudyGuideData | null>(null);
   const [examStyleAvailable, setExamStyleAvailable] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -195,7 +203,11 @@ export function StudyGuideView({ courseId, courseName }: { courseId: string; cou
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [flashCounts, setFlashCounts] = useState<FlashcardCounts | null>(null);
-  const [review, setReview] = useState<{ conceptKey: string | null; dueOnly: boolean } | null>(null);
+  // Deep link from the course launcher's Flashcards tile: ?review=due opens the
+  // due queue across all concepts; ?review=<conceptKey> scopes to one concept.
+  const [review, setReview] = useState<{ conceptKey: string | null; dueOnly: boolean } | null>(
+    initialReview ? { conceptKey: initialReview === "due" ? null : initialReview, dueOnly: true } : null
+  );
   const [makingCards, setMakingCards] = useState<Set<string>>(new Set());
   const makingBaseRef = useRef<Map<string, number>>(new Map());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);

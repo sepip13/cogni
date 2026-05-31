@@ -266,6 +266,29 @@
     border-color: var(--accent);
   }
 
+  /* Feature launcher tiles — lift + reveal the corner motif on hover (compositor
+     friendly: transform + opacity only; reduced-motion stills the durations). */
+  .feature-tile {
+    transition: transform var(--duration-fast) var(--ease-out-expo),
+      border-color var(--duration-fast), box-shadow var(--duration-fast);
+  }
+  .feature-tile .feature-motif {
+    opacity: 0.08;
+    transition: opacity var(--duration-normal) var(--ease-out-expo);
+  }
+  .feature-tile:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  }
+  .feature-tile:hover .feature-motif {
+    opacity: 0.2;
+  }
+  .feature-tile:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   /* Topbar responsive */
   .topbar-mobile-menu { display: none; }
   @media (max-width: 639px) {

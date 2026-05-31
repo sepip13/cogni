@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { MyWorkSection } from "./MyWorkSection";
+import { FeatureLauncher } from "./FeatureLauncher";
 import { ShareDialog } from "@/components/share/ShareDialog";
 import type { CourseData } from "./types";
 
@@ -150,81 +151,35 @@ export function ReadyView({ course }: { course: CourseData }) {
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link
-            href={`/courses/${course.id}/guide`}
-            style={{
-              padding: "9px 18px",
-              background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-              border: "1px solid transparent",
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 700,
-              color: "var(--bg)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            🧠 Study guide
-          </Link>
-          <Link
-            href={`/courses/${course.id}/exams`}
-            style={{
-              padding: "9px 18px",
-              background: "var(--surface-2)",
-              border: "1px solid var(--border-strong)",
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--text)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            📝 Exam trainer
-          </Link>
           <button
             onClick={() => setShareOpen(true)}
+            className="hover-accent-border"
             style={{
-              padding: "9px 18px",
+              padding: "9px 16px",
               background: "var(--accent-soft)",
               border: "1px solid var(--accent)",
               borderRadius: 8,
               fontSize: 13,
               fontWeight: 600,
               color: "var(--accent)",
-              transition: "opacity 0.15s",
               whiteSpace: "nowrap",
               cursor: "pointer",
             }}
           >
             Share
           </button>
-          <Link
-            href={`/courses/${course.id}/chat`}
-            style={{
-              padding: "9px 18px",
-              background: "var(--surface-2)",
-              border: "1px solid var(--border-strong)",
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--text)",
-              transition: "border-color 0.15s",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Ask Cogni
-          </Link>
           <a
             href={`/api/courses/${course.id}/export`}
             download
+            className="hover-border"
             style={{
-              padding: "9px 18px",
+              padding: "9px 16px",
               background: "var(--surface-2)",
               border: "1px solid var(--border-strong)",
               borderRadius: 8,
               fontSize: 13,
               fontWeight: 600,
               color: "var(--text)",
-              transition: "border-color 0.15s",
               whiteSpace: "nowrap",
               textDecoration: "none",
               display: "inline-block",
@@ -234,6 +189,9 @@ export function ReadyView({ course }: { course: CourseData }) {
           </a>
         </div>
       </div>
+
+      {/* Feature launcher — direct access to every tool for this course */}
+      <FeatureLauncher course={course} />
 
       {/* KPI grid — auto-fill collapses to 2×2 on mobile, 4×1 on desktop */}
       <div
@@ -515,7 +473,9 @@ export function ReadyView({ course }: { course: CourseData }) {
       </div>
 
       {/* Student work — distinct from course material / study plan */}
-      <MyWorkSection courseId={course.id} />
+      <div id="my-work" style={{ scrollMarginTop: 80 }}>
+        <MyWorkSection courseId={course.id} />
+      </div>
 
       {shareOpen && <ShareDialog courseId={course.id} onClose={() => setShareOpen(false)} />}
     </div>
