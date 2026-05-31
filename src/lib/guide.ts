@@ -8,7 +8,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { freeLLMCompleteHeavy } from "@/lib/freellm";
+import { freeLLMCompleteFailover } from "@/lib/freellm";
 
 const MAX_SLICE_CHARS = 9000;
 const MAX_TOKENS = 2400;
@@ -134,21 +134,13 @@ Related concepts to connect to: ${neighbors.map((n) => n.label).join(", ") || "n
 ${slices}
 </material>`;
 
-    let md = "";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        md = await freeLLMCompleteHeavy(
-          [
-            { role: "system", content: buildSystemPrompt(section.guide.course.name, lang) },
-            { role: "user", content: userMessage },
-          ],
-          { model, temperature: TEMPERATURE, maxTokens: MAX_TOKENS, timeoutMs: SECTION_TIMEOUT_MS }
-        );
-        break;
-      } catch (e) {
-        if (attempt === 1) throw e; // one retry on a slow/garbled response
-      }
-    }
+    const { text: md } = await freeLLMCompleteFailover(
+      [
+        { role: "system", content: buildSystemPrompt(section.guide.course.name, lang) },
+        { role: "user", content: userMessage },
+      ],
+      { model, heavy: true, temperature: TEMPERATURE, maxTokens: MAX_TOKENS, timeoutMs: SECTION_TIMEOUT_MS, label: `guide-section:${sectionId}` }
+    );
 
     await prisma.studyGuideSection.update({
       where: { id: sectionId },

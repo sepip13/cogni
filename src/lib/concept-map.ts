@@ -12,7 +12,7 @@
  * Arbitrarily large courses are handled and the context window is never a wall.
  */
 
-import { freeLLMCompleteHeavy } from "@/lib/freellm";
+import { freeLLMCompleteFailover } from "@/lib/freellm";
 import { z } from "zod";
 
 // The free proxy is slow and gets slower under concurrency, but a single call
@@ -25,7 +25,6 @@ const MAX_CLUSTERS = 8;
 const CONCURRENCY = 2;
 const EXTRACT_TIMEOUT_MS = 240_000;
 const EXTRACT_MAX_TOKENS = 7000; // room for the full bounded concept list
-const EXTRACT_ATTEMPTS = 2; // one retry on a slow/garbled response
 
 export type MapNode = {
   id: string;
@@ -129,21 +128,29 @@ async function extractChunk(
     { role: "system" as const, content: extractSystem(courseName, level) },
     { role: "user" as const, content: `<material_portion>\n${chunk}\n</material_portion>\n\n<course_emphasis>\n${topicHints}\n</course_emphasis>` },
   ];
-  for (let attempt = 0; attempt < EXTRACT_ATTEMPTS; attempt++) {
-    try {
-      const raw = await freeLLMCompleteHeavy(messages, {
-        model,
-        jsonMode: true,
-        temperature: 0.2,
-        maxTokens: EXTRACT_MAX_TOKENS,
-        timeoutMs: EXTRACT_TIMEOUT_MS,
-      });
-      return ExtractSchema.parse(parseLoose(raw));
-    } catch {
-      // retry once on timeout / garbled JSON
-    }
+  try {
+    const { text } = await freeLLMCompleteFailover(messages, {
+      model,
+      heavy: true,
+      jsonMode: true,
+      temperature: 0.2,
+      maxTokens: EXTRACT_MAX_TOKENS,
+      timeoutMs: EXTRACT_TIMEOUT_MS,
+      label: "concept-map",
+      // Fall over to the next model if a chunk's JSON is unparseable.
+      validate: (t) => {
+        try {
+          ExtractSchema.parse(parseLoose(t));
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    });
+    return ExtractSchema.parse(parseLoose(text));
+  } catch {
+    return null;
   }
-  return null;
 }
 
 // ── Stage 2: merge + assemble (pure code, no LLM) ─────────────────────────────

@@ -55,6 +55,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       language: true,
       mindMap: true,
       outline: true,
+      briefing: true,
+      briefingStatus: true,
+      briefingError: true,
       error: true,
       updatedAt: true,
       sections: {

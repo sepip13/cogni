@@ -133,6 +133,22 @@ export interface MindMap {
 export type GuideStatus = "ANALYZING" | "MAP_READY" | "GENERATING" | "READY" | "FAILED";
 export type GuideSectionStatus = "PENDING" | "GENERATING" | "READY" | "FAILED";
 
+// ── "Start here" game plan ────────────────────────────────────────────────
+export interface BriefingMissing {
+  material: string;
+  why: string;
+}
+
+export interface Briefing {
+  bottom_line: string;
+  assessment: { format: string; when: string; grading_basis: string };
+  what_it_takes: string;
+  parts: { total: number; must_study: number; explanation: string };
+  path: { start: string; finish: string; why_this_order: string };
+  how_to_study: string;
+  sufficiency: { sufficient: boolean; missing: BriefingMissing[] };
+}
+
 export interface GuideSection {
   id: string;
   order: number;
@@ -148,6 +164,9 @@ export interface StudyGuideData {
   language: string | null;
   mindMap: MindMap | null;
   outline: string[] | null;
+  briefing: Briefing | null;
+  briefingStatus: GuideSectionStatus;
+  briefingError: string | null;
   error: string | null;
   updatedAt: string;
   sections: GuideSection[];

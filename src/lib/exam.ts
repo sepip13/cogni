@@ -5,7 +5,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { freeLLMCompleteHeavy } from "@/lib/freellm";
+import { freeLLMCompleteFailover } from "@/lib/freellm";
 import { z } from "zod";
 
 // Per-process guards so a double-click (two `after()` jobs for the same id)
@@ -17,10 +17,9 @@ const mockInFlight = new Set<string>();
 const MAX_TRIAL_CHARS = 30_000;
 const MAX_MATERIAL_CHARS = 60_000;
 const MAX_QUESTIONS = 40;
-// The free proxy is slow and variable, so give heavy calls a generous timeout
-// and one retry (these run in the background, so a long wait is fine).
+// The free proxy is slow and variable, so give heavy calls a generous per-attempt
+// timeout; reliability now comes from model failover rather than same-model retry.
 const MOCK_TIMEOUT_MS = 240_000;
-const ATTEMPTS = 2;
 
 // ── Trial-split chunking ──────────────────────────────────────────────────────
 // The proxy truncates long JSON well below the requested token cap, so a single
@@ -185,26 +184,26 @@ async function splitOneChunk(chunk: string, courseName: string, model: string): 
     { role: "system" as const, content: splitSystem(courseName) },
     { role: "user" as const, content: chunk },
   ];
-  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+  try {
+    const { text: raw } = await freeLLMCompleteFailover(messages, {
+      model,
+      heavy: true,
+      jsonMode: true,
+      temperature: 0.1,
+      maxTokens: SPLIT_CHUNK_MAX_TOKENS,
+      timeoutMs: SPLIT_CHUNK_TIMEOUT_MS,
+      label: "exam-split",
+    });
+    const cleaned = stripFences(raw);
+    let qs: TrialQuestion[];
     try {
-      const raw = await freeLLMCompleteHeavy(messages, {
-        model,
-        jsonMode: true,
-        temperature: 0.1,
-        maxTokens: SPLIT_CHUNK_MAX_TOKENS,
-        timeoutMs: SPLIT_CHUNK_TIMEOUT_MS,
-      });
-      const cleaned = stripFences(raw);
-      let qs: TrialQuestion[];
-      try {
-        qs = SplitSchema.parse(JSON.parse(cleaned)).questions;
-      } catch {
-        qs = z.array(TrialQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
-      }
-      if (qs.length > 0) return qs;
+      qs = SplitSchema.parse(JSON.parse(cleaned)).questions;
     } catch {
-      // timeout / network / garbled — retry once, then give up on this chunk
+      qs = z.array(TrialQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
     }
+    if (qs.length > 0) return qs;
+  } catch {
+    // every model failed for this chunk — skip it, never fatal to the whole split
   }
   return [];
 }
@@ -308,26 +307,26 @@ ${ctx.material}
     { role: "system" as const, content: mockSystem(ctx.courseName, batchCount, batchIdx, totalBatches) },
     { role: "user" as const, content: userMessage },
   ];
-  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+  try {
+    const { text: raw } = await freeLLMCompleteFailover(messages, {
+      model: ctx.model,
+      heavy: true,
+      jsonMode: true,
+      temperature: 0.4,
+      maxTokens: MOCK_BATCH_MAX_TOKENS,
+      timeoutMs: MOCK_TIMEOUT_MS,
+      label: "exam-mock",
+    });
+    const cleaned = stripFences(raw);
+    let qs: MockQuestion[];
     try {
-      const raw = await freeLLMCompleteHeavy(messages, {
-        model: ctx.model,
-        jsonMode: true,
-        temperature: 0.4,
-        maxTokens: MOCK_BATCH_MAX_TOKENS,
-        timeoutMs: MOCK_TIMEOUT_MS,
-      });
-      const cleaned = stripFences(raw);
-      let qs: MockQuestion[];
-      try {
-        qs = MockSchema.parse(JSON.parse(cleaned)).questions;
-      } catch {
-        qs = z.array(MockQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
-      }
-      if (qs.length > 0) return qs;
+      qs = MockSchema.parse(JSON.parse(cleaned)).questions;
     } catch {
-      // timeout / garbled — retry once, then skip this batch
+      qs = z.array(MockQuestionSchema).catch([]).parse(salvageArray(cleaned, "questions"));
     }
+    if (qs.length > 0) return qs;
+  } catch {
+    // every model failed for this batch — skip it, never fatal
   }
   return [];
 }

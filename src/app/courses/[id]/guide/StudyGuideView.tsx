@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MindMapGraph } from "./MindMapGraph";
 import { GuideReader } from "./GuideReader";
+import { StartHerePanel } from "./StartHerePanel";
 import type { GuideSection, MindMap, MindMapNode, StudyGuideData } from "../types";
 
 const POLL_MS = 2500;
@@ -132,6 +133,7 @@ export function StudyGuideView({ courseId, courseName }: { courseId: string; cou
   const [guide, setGuide] = useState<StudyGuideData | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [briefingBusy, setBriefingBusy] = useState(false);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -148,9 +150,12 @@ export function StudyGuideView({ courseId, courseName }: { courseId: string; cou
     fetchGuide();
   }, [fetchGuide]);
 
-  // Poll while the map is being built OR any section is being written.
+  // Poll while the map is being built, a section is being written, OR the game
+  // plan is generating (covers a reload mid-generation in another tab).
   const busy =
-    guide?.status === "ANALYZING" || (guide?.sections.some((s) => s.status === "GENERATING") ?? false);
+    guide?.status === "ANALYZING" ||
+    guide?.briefingStatus === "GENERATING" ||
+    (guide?.sections.some((s) => s.status === "GENERATING") ?? false);
   useEffect(() => {
     if (!busy) return;
     pollRef.current = setInterval(fetchGuide, POLL_MS);
@@ -174,6 +179,26 @@ export function StudyGuideView({ courseId, courseName }: { courseId: string; cou
       .catch(() => {});
   }
 
+  function runBriefing() {
+    setBriefingBusy(true);
+    setGuide((g) => (g ? { ...g, briefingStatus: "GENERATING", briefingError: null } : g));
+    fetch(`/api/courses/${courseId}/guide/briefing`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then(async (r) => {
+        const b = (await r.json().catch(() => ({}))) as { briefing?: StudyGuideData["briefing"]; error?: string };
+        if (!r.ok || !b.briefing) {
+          setGuide((g) => (g ? { ...g, briefingStatus: "FAILED", briefingError: b.error ?? "Couldn't build your game plan." } : g));
+          return;
+        }
+        setGuide((g) => (g ? { ...g, briefing: b.briefing!, briefingStatus: "READY", briefingError: null } : g));
+      })
+      .catch(() => setGuide((g) => (g ? { ...g, briefingStatus: "FAILED", briefingError: "Network error — please try again." } : g)))
+      .finally(() => setBriefingBusy(false));
+  }
+
   function jumpTo(conceptKey: string) {
     requestAnimationFrame(() => {
       document.getElementById(`section-${conceptKey}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -190,7 +215,7 @@ export function StudyGuideView({ courseId, courseName }: { courseId: string; cou
           setError(b.error ?? "Could not start the study guide.");
           return;
         }
-        setGuide((g) => (g ? { ...g, status: "ANALYZING", error: null } : { id: "", status: "ANALYZING", language: null, mindMap: null, outline: null, error: null, updatedAt: "", sections: [] }));
+        setGuide((g) => (g ? { ...g, status: "ANALYZING", error: null } : { id: "", status: "ANALYZING", language: null, mindMap: null, outline: null, briefing: null, briefingStatus: "PENDING", briefingError: null, error: null, updatedAt: "", sections: [] }));
       })
       .catch(() => setError("Network error — please try again."))
       .finally(() => setCreating(false));
@@ -300,6 +325,15 @@ export function StudyGuideView({ courseId, courseName }: { courseId: string; cou
           {creating ? "Rebuilding…" : "Rebuild map"}
         </button>
       </div>
+
+      <StartHerePanel
+        courseName={courseName}
+        status={guide.briefingStatus}
+        briefing={guide.briefing}
+        error={guide.briefingError}
+        busy={briefingBusy}
+        onGenerate={runBriefing}
+      />
 
       <div className="topic-detail-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
         {/* Graph */}

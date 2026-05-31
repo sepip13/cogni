@@ -21,6 +21,15 @@ model User {
   stripeSubscriptionId String?   @unique
   proAccessEndsAt      DateTime?
   createdAt            DateTime  @default(now())
+
+  // ── Feedback / interview survey prompt state ──
+  surveyStatus       SurveyStatus @default(NONE)
+  surveyCampaign     String?      // active campaign key this decision applies to
+  surveyPromptCount  Int          @default(0)
+  surveyLastShownAt  DateTime?
+  surveySnoozedUntil DateTime?
+  surveyActionedAt   DateTime?
+
   accounts    Account[]
   sessions    Session[]
   courses     Course[]
@@ -30,6 +39,13 @@ model User {
 enum UserPlan {
   FREE
   PRO
+}
+
+enum SurveyStatus {
+  NONE // never actioned for the active campaign
+  SNOOZED // "Maybe later" — re-eligible after surveySnoozedUntil
+  COMPLETED // clicked through to the form
+  DISMISSED // "Don't show again"
 }
 
 model Account {
@@ -286,6 +302,9 @@ model StudyGuide {
   language  String?
   mindMap   Json?               // { nodes[], edges[], clusters[] }
   outline   Json?               // ordered conceptIds → sections (teaching order)
+  briefing       Json?          // "Start here" game-plan (structured Briefing)
+  briefingStatus SectionStatus  @default(PENDING)
+  briefingError  String?        @db.Text
   modelId   String?
   error     String?             @db.Text
   createdAt DateTime            @default(now())

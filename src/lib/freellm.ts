@@ -111,6 +111,109 @@ export function freeLLMCompleteHeavy(
   return runHeavyLLM(() => freeLLMComplete(messages, opts));
 }
 
+// ── Model failover ────────────────────────────────────────────────────────────
+
+/**
+ * Universal fallback models, tried in order AFTER the caller's requested model.
+ * `auto` is the gateway's own provider-failover router (it routes to ANY healthy
+ * provider), so it's the catch-all last resort; the others are fast, reliable,
+ * large-context free models. Override the whole list via env, no code change.
+ */
+const FALLBACK_MODELS = (process.env.FREELLMAPI_FALLBACK_MODELS ?? "gemini-2.5-flash-lite,gemini-2.5-flash,auto")
+  .split(",")
+  .map((m) => m.trim())
+  .filter(Boolean);
+
+/**
+ * Per-attempt timeout ceiling. Deliberately short: when one provider hangs we
+ * fail fast and fall over to the next model instead of waiting out a multi-minute
+ * socket timeout on a single dead provider. Override via env.
+ */
+const ATTEMPT_TIMEOUT_MS = Math.max(15_000, Number(process.env.FREELLMAPI_ATTEMPT_TIMEOUT_MS) || 120_000);
+
+function dedupeModels(models: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of models) {
+    const v = m.trim();
+    if (v && !seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+/** Ordered, de-duplicated model chain: the requested model first, then the configured fallbacks. */
+export function buildModelChain(primary?: string | null): string[] {
+  const chain = dedupeModels([...(primary ? [primary] : []), ...FALLBACK_MODELS]);
+  return chain.length > 0 ? chain : ["auto"];
+}
+
+export interface FailoverOptions {
+  /** Primary model; the chain starts here, then appends the configured fallbacks. */
+  model?: string | null;
+  /** Explicit chain — overrides `model` + fallbacks when provided. */
+  models?: string[];
+  maxTokens?: number;
+  temperature?: number;
+  jsonMode?: boolean;
+  /** Per-attempt timeout, capped at ATTEMPT_TIMEOUT_MS. */
+  timeoutMs?: number;
+  /** Route each attempt through the global heavy-LLM semaphore. */
+  heavy?: boolean;
+  /** Acceptance test: a parseable-but-bad response (e.g. truncated JSON) counts as a failure and falls over. */
+  validate?: (text: string) => boolean;
+  /** Short context tag for logs, e.g. "ingest:<courseId>". */
+  label?: string;
+}
+
+export interface LLMResult {
+  text: string;
+  /** The model that actually produced the accepted response. */
+  model: string;
+}
+
+/**
+ * Completes a chat across a CHAIN of models, returning the first response that is
+ * non-empty and (if `validate` is given) valid. A timeout, non-200, empty, or
+ * invalid response advances to the next model — `auto` (the gateway's own
+ * provider router) being the universal last resort. Throws only when EVERY model
+ * in the chain fails.
+ */
+export async function freeLLMCompleteFailover(
+  messages: ChatMessage[],
+  opts: FailoverOptions = {}
+): Promise<LLMResult> {
+  const chain = opts.models?.length ? dedupeModels(opts.models) : buildModelChain(opts.model);
+  const perAttempt = Math.min(opts.timeoutMs ?? ATTEMPT_TIMEOUT_MS, ATTEMPT_TIMEOUT_MS);
+  const tag = `[llm${opts.label ? `:${opts.label}` : ""}]`;
+  const base = {
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature,
+    jsonMode: opts.jsonMode,
+    timeoutMs: perAttempt,
+  };
+
+  let lastError = "no models attempted";
+  for (let i = 0; i < chain.length; i++) {
+    const model = chain[i];
+    try {
+      const run = () => freeLLMComplete(messages, { ...base, model });
+      const text = opts.heavy ? await runHeavyLLM(run) : await run();
+      if (!text.trim()) throw new Error("empty response");
+      if (opts.validate && !opts.validate(text)) throw new Error("response failed validation");
+      if (i > 0) console.log(`${tag} ✓ recovered on fallback model "${model}" (${i + 1}/${chain.length})`);
+      return { text, model };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      const next = i + 1 < chain.length ? `→ falling over to "${chain[i + 1]}"` : "(no models left)";
+      console.warn(`${tag} ✗ "${model}" failed: ${lastError} ${next}`);
+    }
+  }
+  throw new Error(`All ${chain.length} models failed. Last error: ${lastError}`);
+}
+
 export async function freeLLMStream(
   messages: ChatMessage[],
   opts: { model?: string; maxTokens?: number; temperature?: number } = {}
